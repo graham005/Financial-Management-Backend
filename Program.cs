@@ -1,13 +1,133 @@
+using Financial_management_backend.Data;
+using Financial_management_backend.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+
 var builder = WebApplication.CreateBuilder(args);
 
+var jwtConfig = builder.Configuration.GetSection("JwtConfig");
+var keySection = jwtConfig["Key"];
+if (string.IsNullOrEmpty(keySection))
+{
+    throw new InvalidOperationException("JWT Key is not configured in the application settings.");
+}
+var key = Encoding.ASCII.GetBytes(keySection);
+
 // Add services to the container.
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+}).AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false;
+    options.SaveToken = true;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtConfig["Issuer"],
+        ValidAudience = jwtConfig["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(key),
+    };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            // Accept token without "Bearer " prefix
+            var token = context.Request.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(token))
+            {
+                context.Token = token; // Directly assign the token
+            }
+            return Task.CompletedTask;
+        },
+        OnAuthenticationFailed = context =>
+        {
+            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+            if (context.Exception.GetType() == typeof(SecurityTokenInvalidSignatureException))
+            {
+                Console.WriteLine("The token signature is invalid.");
+            }
+            else if (context.Exception.GetType() == typeof(SecurityTokenInvalidIssuerException))
+            {
+                Console.WriteLine("The token issuer is invalid.");
+            }
+            else if (context.Exception.GetType() == typeof(SecurityTokenInvalidAudienceException))
+            {
+                Console.WriteLine("The token audience is invalid.");
+            }
+            return Task.CompletedTask;
+        },
+        OnTokenValidated = context =>
+        {
+            Console.WriteLine("Token validated successfully.");
+            return Task.CompletedTask;
+        }
+    };
+});
+
+builder.Services.AddAuthorization();
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+});
 
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Enter 'Bearer' [space] and then your token in the text input below.\n\nExample: 'Bearer 12345abcdef'",
+    });
+
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    if (!dbContext.Users.Any())
+    {
+        var adminUser = new User
+        {
+            Username = "admin",
+            Email = "admin@example.com",
+            Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
+            Role = "Admin"
+        };
+        dbContext.Users.Add(adminUser);
+        dbContext.SaveChanges();
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -17,6 +137,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
 
 app.UseAuthorization();
 
