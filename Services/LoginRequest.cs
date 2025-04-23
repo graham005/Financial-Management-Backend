@@ -5,4 +5,10 @@
         public string Username { get; set; }
         public string Password { get; set; }
     }
+    public class LoginReponse
+    {
+        public string Username { get; set; }
+        public string AccessToken { get; set; }
+        public int ExpiresIn { get; set; }
+    }
 }
