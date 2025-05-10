@@ -58,6 +58,7 @@ namespace Financial_management_backend.Services
                 AccessToken = accessToken,
                 Username = request.Username,
                 ExpiresIn = (int)tokenExpiryTimeStamp.Subtract(DateTime.UtcNow).TotalSeconds,
+                Role = user.Role
             };
         }
 
