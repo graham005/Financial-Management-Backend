@@ -13,6 +13,7 @@ namespace Financial_management_backend.Data
         public DbSet<Student> Students { get; set; }
         public DbSet<Grade> Grades { get; set; }
         public DbSet<Parent> Parents { get; set; }
+        public DbSet<FeeStructure> FeeStructures { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -30,6 +31,12 @@ namespace Financial_management_backend.Data
                 .HasOne(s => s.Parent)
                 .WithMany()
                 .HasForeignKey(s =>s.ParentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<FeeStructure>()
+                .HasOne(fs => fs.Grade)
+                .WithMany()
+                .HasForeignKey(fs => fs.GradeId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
 
