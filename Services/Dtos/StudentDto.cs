@@ -5,9 +5,14 @@
         public Guid Id { get; set; }
         public string AdmissionNumber { get; set; }
         public string Name { get; set; }
-        public DateTime Birthdate { get; set; }
+        public string FirstName { get; set; }
+        public string MiddleName { get; set; }
+        public string LastName { get; set; }
+        public DateOnly Birthdate { get; set; }
         public string GradeName { get; set; }
         public string? ParentName { get; set; }
+        public string ParentFirstName { get; set; }
+        public string ParentLastName { get; set; }
         public string? ParentPhoneNumber { get; set; }
     }
 }

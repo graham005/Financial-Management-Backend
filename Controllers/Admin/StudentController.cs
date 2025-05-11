@@ -49,6 +49,9 @@ namespace Financial_management_backend.Controllers.Admin
             {
                 AdmissionNumber = createStudentDto.AdmissionNumber,
                 Name = createStudentDto.Name,
+                FirstName = createStudentDto.FirstName,
+                MiddleName = createStudentDto.MiddleName,
+                LastName = createStudentDto.LastName,
                 Birthdate = createStudentDto.Birthdate,
                 GradeId = grade.Id,
                 ParentId = parent.Id,
@@ -80,9 +83,14 @@ namespace Financial_management_backend.Controllers.Admin
                 Id = student.Id,
                 AdmissionNumber = student.AdmissionNumber,
                 Name = student.Name,
+                FirstName = student.FirstName,
+                MiddleName = student.MiddleName,
+                LastName = student.LastName,
                 Birthdate = student.Birthdate,
                 GradeName = student.Grade?.Name,
-                ParentName = student.Parent?.Name,
+                ParentName = student.Parent.Name,
+                ParentFirstName = student.Parent.FirstName,
+                ParentLastName = student.Parent.LastName,
                 ParentPhoneNumber = student.Parent?.PhoneNumber
 
             }).ToList();
@@ -106,9 +114,14 @@ namespace Financial_management_backend.Controllers.Admin
                 Id = student.Id,
                 AdmissionNumber = student.AdmissionNumber,
                 Name = student.Name,
+                FirstName = student.FirstName,
+                MiddleName = student.MiddleName,
+                LastName = student.LastName,
                 Birthdate = student.Birthdate,
                 GradeName = student.Grade.Name,
                 ParentName = student.Parent.Name,
+                ParentFirstName = student.Parent.FirstName,
+                ParentLastName = student.Parent.LastName,
                 ParentPhoneNumber = student.Parent.PhoneNumber
             };
 
@@ -142,6 +155,9 @@ namespace Financial_management_backend.Controllers.Admin
 
             student.AdmissionNumber = updateStudentDto.AdmissionNumber;
             student.Name = updateStudentDto.Name;
+            student.FirstName = updateStudentDto.FirstName;
+            student.MiddleName = updateStudentDto.MiddleName;
+            student.LastName = updateStudentDto.LastName;
             student.Birthdate = updateStudentDto.Birthdate;
             student.GradeId = grade.Id;
             student.ParentId = parent.Id;
