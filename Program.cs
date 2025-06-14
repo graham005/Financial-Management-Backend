@@ -1,6 +1,8 @@
 using Financial_management_backend.Data;
 using Financial_management_backend.Models;
 using Financial_management_backend.Services;
+using Financial_management_backend.Services.BackgroundServices;
+using Financial_management_backend.Services.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -76,6 +78,9 @@ builder.Services.AddCors(options =>
                    .AllowAnyHeader();
         });
 });
+// Registering repository and background services 
+builder.Services.AddHostedService<TokenCleanupService>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
 var app = builder.Build();
 
