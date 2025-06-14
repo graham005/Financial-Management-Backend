@@ -1,8 +1,6 @@
-﻿using BCrypt.Net;
-using Financial_management_backend.Data;
+﻿using Financial_management_backend.Data;
 using Financial_management_backend.Models;
 using Financial_management_backend.Services.Dtos;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,6 +45,7 @@ namespace Financial_management_backend.Controllers.Admin
         public async Task<IActionResult> GetAllUsers()
         {
             var users = await _context.Users.ToListAsync();
+            if (users == null || users.Count == 0) return NotFound("User not found");
             return Ok(users);
         }
 
@@ -54,7 +53,7 @@ namespace Financial_management_backend.Controllers.Admin
         public IActionResult GetUserById(Guid id)
         {
             var user = _context.Users.Find(id);
-            if (user == null) return NotFound();
+            if (user == null) return NotFound("User with that ID not found");
 
             return Ok(user);
         }
@@ -63,7 +62,7 @@ namespace Financial_management_backend.Controllers.Admin
         public async Task<IActionResult> UpdateUser(Guid id, [FromBody ] UserDto updateUserDto)
         {
             var user = _context.Users.Find(id);
-            if (user == null) return NotFound();
+            if (user == null) return NotFound("User with that ID not found");
 
             user.Username = updateUserDto.Username;
             user.Email = updateUserDto.Email;
@@ -73,19 +72,19 @@ namespace Financial_management_backend.Controllers.Admin
                 user.Password = BCrypt.Net.BCrypt.HashPassword(updateUserDto.Password);
 
             await _context.SaveChangesAsync();
-            return NoContent();
+            return Ok("User updated successfully");
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(Guid id)
         {
             var user = _context.Users.Find(id);
-            if (user == null) return NotFound();
+            if (user == null) return NotFound("User with that ID not found");
 
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok("User Deleted successfully");
         }
     }
 }

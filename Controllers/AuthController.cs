@@ -1,12 +1,6 @@
-﻿using Financial_management_backend.Data;
-using Financial_management_backend.Models;
-using Financial_management_backend.Services;
+﻿using Financial_management_backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
 namespace Financial_management_backend.Controllers
 {
@@ -28,6 +22,16 @@ namespace Financial_management_backend.Controllers
                 return Unauthorized();
 
             return result;
+        }
+
+        [HttpPost("Refresh")]
+        public async Task<ActionResult<LoginReponse>> Refresh([FromBody] RefreshRequestModel request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return BadRequest("Invalid Token");
+            
+            var result = await _jwtService.ValidateRefreshToken(request.Token);
+            return result != null ? result : Unauthorized();
         }
             
     }

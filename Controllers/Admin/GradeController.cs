@@ -23,7 +23,7 @@ namespace Financial_management_backend.Controllers.Admin
             var grades = await _context.Grades.ToListAsync();
 
             if(grades.Count == 0 || grades == null) 
-                return NoContent();
+                return NotFound("No Grades Found");
 
             var gradeDtos = grades.Select(grade => new GradeDto
             {
@@ -39,7 +39,7 @@ namespace Financial_management_backend.Controllers.Admin
         {
             var grade = await _context.Grades.FindAsync(id);
             if (grade == null)
-                return NotFound();
+                return NotFound("Grade with that ID not found");
 
             var gradeDto = new GradeDto
             {
@@ -75,25 +75,25 @@ namespace Financial_management_backend.Controllers.Admin
         {
             var grade = await _context.Grades.FindAsync(id);
 
-            if (grade == null) return NotFound();
+            if (grade == null) return NotFound("Grade with that ID not found");
 
             grade.Name = updateGradeDto.Name;
 
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok("Grade updated successfully");
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteGrade(int id)
         {
             var grade = await _context.Grades.FindAsync(id);
-            if (grade == null) return NotFound();
+            if (grade == null) return NotFound("Grade with that ID not found");
 
             _context.Grades.Remove(grade);
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok("Grade deleted successfully");
         }
     }
 }

@@ -75,7 +75,7 @@ namespace Financial_management_backend.Controllers.Admin
 
             if(students == null || students.Count == 0)
             {
-                return NoContent();
+                return NotFound("Students not found.");
             }
 
             var studentDtos = students.Select(student => new StudentDto
@@ -107,7 +107,7 @@ namespace Financial_management_backend.Controllers.Admin
                 .FirstOrDefaultAsync(s => s.Id == id);
 
             if (student == null)
-                return NotFound();
+                return NotFound("Student with that ID not found");
 
             var studentDto = new StudentDto
             {
@@ -128,12 +128,12 @@ namespace Financial_management_backend.Controllers.Admin
             return Ok(studentDto);
         }
 
-        [HttpPut("{id}")]
+        [HttpPatch("{id}")]
         public async Task<IActionResult> UpdateStudent(Guid id, [FromBody] CreateStudentDto updateStudentDto)
         {
             var student = await _context.Students.FindAsync(id);
             if (student == null)
-                return NotFound();
+                return NotFound("Student with that ID not found");
 
             // Check if Grade exists
             var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateStudentDto.GradeName);
@@ -163,19 +163,19 @@ namespace Financial_management_backend.Controllers.Admin
             student.ParentId = parent.Id;
 
             await _context.SaveChangesAsync();
-            return NoContent();
+            return Ok("Student updated successfully");
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteStudent(Guid id)
         {
             var student = await _context.Students.FindAsync(id);
-            if (student == null) return NotFound();
+            if (student == null) return NotFound("Student with that ID not found");
 
             _context.Students.Remove(student);
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok("Student deleted successfully");
         }
     }
 }

@@ -1,7 +1,6 @@
 ﻿using Financial_management_backend.Data;
 using Financial_management_backend.Models;
 using Financial_management_backend.Services.Dtos;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,7 +25,7 @@ namespace Financial_management_backend.Controllers.Admin
                 .ToListAsync();
 
             if (feeStructure == null || feeStructure.Count == 0)
-                return NoContent();
+                return NotFound("No fee structure found");
 
             var feeStructureDtos = feeStructure.Select(fs => new FeeStructureDto
             {
@@ -49,7 +48,7 @@ namespace Financial_management_backend.Controllers.Admin
                 .FirstOrDefaultAsync(fs => fs.Id == id);
 
             if (feeStructure == null)
-                return NotFound();
+                return NotFound("No fee structure with that ID exists");
 
             var feeStructureDto = new FeeStructureDto
             {
@@ -103,7 +102,7 @@ namespace Financial_management_backend.Controllers.Admin
             // Find the Grade by NAme
             var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateFeeStructureDto.GradeName);
             if (grade == null) 
-                return NotFound("Grade not found");
+                return NotFound("Grade with that ID not found");
 
             feeStructure.GradeId = grade.Id;
             feeStructure.Term1Fee = updateFeeStructureDto.Term1Fee;
@@ -112,7 +111,7 @@ namespace Financial_management_backend.Controllers.Admin
 
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok("FeeStructure updated successfully");
         }
 
         [HttpDelete("{id}")]
@@ -121,12 +120,12 @@ namespace Financial_management_backend.Controllers.Admin
             var feeStructure = await _context.FeeStructures.FindAsync(id);
 
             if (feeStructure == null)
-                return NotFound();
+                return NotFound("Grade with that ID not found");
 
             _context.FeeStructures.Remove(feeStructure);
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok("Fee Structure deleted successfully");
         }
     }
 }
