@@ -10,10 +10,12 @@ namespace Financial_management_backend.Data
         }
 
         public DbSet<User> Users { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Student> Students { get; set; }
         public DbSet<Grade> Grades { get; set; }
         public DbSet<Parent> Parents { get; set; }
         public DbSet<FeeStructure> FeeStructures { get; set; }
+        public DbSet<OtherFee> OtherFees { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -37,6 +39,12 @@ namespace Financial_management_backend.Data
                 .HasOne(fs => fs.Grade)
                 .WithMany()
                 .HasForeignKey(fs => fs.GradeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<OtherFee>()
+                .HasOne(of => of.Grade)
+                .WithMany()
+                .HasForeignKey(of => of.GradeId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
 
