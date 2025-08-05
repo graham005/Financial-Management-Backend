@@ -16,6 +16,10 @@ namespace Financial_management_backend.Data
         public DbSet<Parent> Parents { get; set; }
         public DbSet<FeeStructure> FeeStructures { get; set; }
         public DbSet<OtherFee> OtherFees { get; set; }
+        public DbSet<Payment> Payments { get; set; }
+
+        public DbSet<FeePayment> FeePayments { get; set; }
+        public DbSet<CustomFee> CustomFees { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -46,6 +50,24 @@ namespace Financial_management_backend.Data
                 .WithMany()
                 .HasForeignKey(of => of.GradeId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.Student)
+                .WithMany()
+                .HasForeignKey(p => p.StudentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<FeePayment>()
+                .HasOne(fp => fp.Payment)
+                .WithMany()
+                .HasForeignKey(fp => fp.PaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CustomFee>()
+                .HasOne(cf => cf.Student)
+                .WithMany()
+                .HasForeignKey(cf => cf.StudentId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
 
     }
