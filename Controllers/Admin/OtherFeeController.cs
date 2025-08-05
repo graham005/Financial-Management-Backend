@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Financial_management_backend.Controllers.Admin
 {
-    [Route("api/[controller]")]
+    [Route("api/admin/[controller]")]
     [ApiController]
     public class OtherFeeController : ControllerBase
     {
@@ -72,7 +72,7 @@ namespace Financial_management_backend.Controllers.Admin
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAllOtherFees([FromQuery]int? gradeId)
+        public async Task<IActionResult> GetAllOtherFees([FromQuery]Guid? gradeId)
         {
             var query = _context.OtherFees
                 .Include(of => of.Grade) // Include grade details
