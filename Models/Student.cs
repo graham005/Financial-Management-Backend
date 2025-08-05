@@ -10,8 +10,11 @@
         public string LastName { get; set; }
         public DateOnly Birthdate { get; set; }
 
-        public int GradeId { get; set; }
+        public Guid GradeId { get; set; }
         public Grade Grade { get; set; }
+
+        public string EnrollmentTerm { get; set; }
+        public int EnrollmentYear { get; set; }
 
         public Guid ParentId { get; set; }
         public Parent Parent { get; set; }

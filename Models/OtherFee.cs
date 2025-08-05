@@ -14,7 +14,7 @@ namespace Financial_management_backend.Models
         public string Name { get; set; }
 
         [Required]
-        public int GradeId { get; set; }
+        public Guid GradeId { get; set; }
         [ForeignKey("GradeId")]
         public Grade Grade { get; set; }
 
