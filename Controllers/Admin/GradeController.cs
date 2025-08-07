@@ -70,8 +70,8 @@ namespace Financial_management_backend.Controllers.Admin
             return CreatedAtAction(nameof(GetGradeById), new { id = grade.Id }, gradeDto);
         }
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateGrade(int id, [FromBody] CreateGradeDto updateGradeDto)
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateGrade(Guid id, [FromBody] CreateGradeDto updateGradeDto)
         {
             var grade = await _context.Grades.FindAsync(id);
 
