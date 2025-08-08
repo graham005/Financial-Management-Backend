@@ -32,6 +32,8 @@ namespace Financial_management_backend.Controllers.Admin
                 parent = new Models.Parent
                 {
                     Name = createStudentDto.ParentName,
+                    FirstName = createStudentDto.ParentFirstName,
+                    LastName = createStudentDto.ParentLastName,
                     PhoneNumber = createStudentDto.ParentPhoneNumber
                 };
                 await _context.Parents.AddAsync(parent);
@@ -39,10 +41,21 @@ namespace Financial_management_backend.Controllers.Admin
             }
 
             // Check if Admission Number already exists 
-            var existingStudent = await _context.Students.FirstOrDefaultAsync(s => s.AdmissionNumber.Equals (createStudentDto.AdmissionNumber,
-                StringComparison.OrdinalIgnoreCase));
+            var existingStudent = await _context.Students
+    .FirstOrDefaultAsync(s => s.AdmissionNumber.ToLower() == createStudentDto.AdmissionNumber.ToLower());
             if (existingStudent != null)
                 return Conflict("A Student with this addmission number already exists.");
+
+            // Determine enrollment term and year
+            var today = DateTime.Today;
+            string enrollmentTerm = "Unknown";
+            if (today >= new DateTime(today.Year, 1, 1) && today < new DateTime(today.Year, 4, 1))
+                enrollmentTerm = "Term 1";
+            else if (today >= new DateTime(today.Year, 5, 1) && today < new DateTime(today.Year, 8, 1))
+                enrollmentTerm = "Term 2";
+            else if (today >= new DateTime(today.Year, 9, 1) && today < new DateTime(today.Year, 12, 1))
+                enrollmentTerm = "Term 3";
+            int enrollmentYear = today.Year;
 
             // Create the student
             var student = new Student
@@ -55,6 +68,8 @@ namespace Financial_management_backend.Controllers.Admin
                 Birthdate = createStudentDto.Birthdate,
                 GradeId = grade.Id,
                 ParentId = parent.Id,
+                EnrollmentTerm = enrollmentTerm,
+
             };
 
             await _context.Students.AddAsync(student);
@@ -147,7 +162,9 @@ namespace Financial_management_backend.Controllers.Admin
                 parent = new Parent
                 {
                     Name = updateStudentDto.ParentName,
-                    PhoneNumber = updateStudentDto.ParentPhoneNumber,
+                    FirstName = updateStudentDto.ParentFirstName,
+                    LastName = updateStudentDto.ParentLastName,
+                    PhoneNumber = updateStudentDto.ParentPhoneNumber
                 };
                 await _context.Parents.AddAsync(parent);
                 await _context.SaveChangesAsync();
