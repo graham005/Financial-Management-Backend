@@ -7,7 +7,7 @@ namespace Financial_management_backend.Services.Dtos
         [Required]
         public string Name { get; set; }
         [Required]
-        public Guid GradeId { get; set; }
+        public string GradeName { get; set; } 
         [Required]
         public decimal Amount { get; set; }
     }
@@ -15,7 +15,7 @@ namespace Financial_management_backend.Services.Dtos
     public class UpdateOtherFeeDto
     {
         public string? Name { get; set; }
-        public Guid? GradeId { get; set; }
+        public string? GradeName { get; set; } // Changed from Guid? GradeId
         public decimal? Amount { get; set; }
     }
 }
