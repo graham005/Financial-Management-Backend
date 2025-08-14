@@ -2,13 +2,14 @@
 using Financial_management_backend.Models;
 using Financial_management_backend.Services;
 using Financial_management_backend.Services.Dtos;
+using Financial_management_backend.Services.Helpers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Financial_management_backend.Controllers.Accountant
 {
-    [Route("api/accountant/[controller]")]
+    [Route("api/[controller]")]
     [ApiController]
     public class PaymentController : ControllerBase
     {
@@ -27,9 +28,9 @@ namespace Financial_management_backend.Controllers.Accountant
             var student = await _context.Students.FindAsync(paymentDto.StudentId);
             if (student == null) { return NotFound("Student not found."); }
 
-            var createdBy = User?.Identity?.Name;
-
-            if (createdBy == null) return NotFound("Creator not found");
+            var userId = User.GetUserId();
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
 
             var payment = new Payment
             {
@@ -40,7 +41,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 Term = paymentDto.Term,
                 PaymentMethod = paymentDto.PaymentMethod,
                 Status = "Completed",
-                CreatedBy = createdBy 
+                CreatedBy = (Guid)userId
             };
 
             await _context.Payments.AddAsync(payment);
@@ -114,13 +115,13 @@ namespace Financial_management_backend.Controllers.Accountant
 
             return Ok(payments.Select(p => new
             {
-                Id = p.Id,
+                p.Id,
                 StudentName = p.Student.Name,
-                Amount = p.Amount,
-                PaymentDate = p.PaymentDate,
-                Term = p.Term,
-                PaymentMethod = p.PaymentMethod,
-                Status = p.Status
+                p.Amount,
+                p.PaymentDate,
+                p.Term,
+                p.PaymentMethod,
+                p.Status
             }));
         }
 
@@ -136,8 +137,8 @@ namespace Financial_management_backend.Controllers.Accountant
 
             return Ok(new
             {
-                Id = payment.Id,
-                Status = payment.Status
+                payment.Id,
+                payment.Status
             });
         }
 
@@ -154,8 +155,8 @@ namespace Financial_management_backend.Controllers.Accountant
             return Ok(new
             {
                 StudentName = student.Name,
-                EnrollmentTerm = student.EnrollmentTerm,
-                EnrollmentYear = student.EnrollmentYear,
+                student.EnrollmentTerm,
+                student.EnrollmentYear,
                 CumulativeArrears = cumulativeArrears // Negative if overpaid
             });
         }
@@ -199,8 +200,8 @@ namespace Financial_management_backend.Controllers.Accountant
             return Ok(new
             {
                 Message = "Payment marked as Failed",
-                Id = payment.Id,
-                Status = payment.Status
+                payment.Id,
+                payment.Status
             });
         }
     }
