@@ -2,6 +2,7 @@ using Financial_management_backend.Data;
 using Financial_management_backend.Models;
 using Financial_management_backend.Services;
 using Financial_management_backend.Services.BackgroundServices;
+using Financial_management_backend.Services.Dtos;
 using Financial_management_backend.Services.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -41,7 +42,11 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -94,7 +99,7 @@ using (var scope = app.Services.CreateScope())
             Username = "admin",
             Email = "admin@example.com",
             Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
-            Role = "Admin"
+            Role = ERole.Admin
         };
         dbContext.Users.Add(adminUser);
         dbContext.SaveChanges();
