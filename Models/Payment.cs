@@ -35,6 +35,6 @@ namespace Financial_management_backend.Models
 
         // Audit Fields
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public string CreatedBy { get; set; }
+        public Guid CreatedBy { get; set; }
     }
 }
