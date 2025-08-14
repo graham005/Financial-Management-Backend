@@ -92,7 +92,7 @@ namespace Financial_management_backend.Controllers.Admin
             return CreatedAtAction(nameof(GetFeeStructureById), new {id = feeStructure.Id}, feeStructure);
         }
 
-        [HttpPut("{id}")]
+        [HttpPatch("{id}")]
         public async Task<IActionResult> UpdateFeeStructure(Guid id, [FromBody] CreateFeeStructureDto updateFeeStructureDto)
         {
             var feeStructure = await _context.FeeStructures.FindAsync(id);

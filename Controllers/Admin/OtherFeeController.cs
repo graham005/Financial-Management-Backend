@@ -22,7 +22,7 @@ namespace Financial_management_backend.Controllers.Admin
         [HttpPost]
         public async Task<IActionResult> CreateOtherFee([FromBody] CreateOtherFeeDto createOtherFeeDto)
         {
-            var grade = await _context.Grades.FindAsync(createOtherFeeDto.GradeId);
+            var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == createOtherFeeDto.GradeName);
             if (grade == null)
             {
                 return NotFound("Grade not found.");
@@ -31,7 +31,7 @@ namespace Financial_management_backend.Controllers.Admin
             var otherFee = new OtherFee
             {
                 Name = createOtherFeeDto.Name,
-                GradeId = createOtherFeeDto.GradeId,
+                GradeId = grade.Id,
                 Amount = createOtherFeeDto.Amount
             };
 
@@ -49,19 +49,15 @@ namespace Financial_management_backend.Controllers.Admin
             if (otherFee == null)
                 return NotFound();
 
-            var grade = await _context.OtherFees.FindAsync(updateOtherFeeDto.GradeId);
-            if(grade == null)
-                return NotFound("Grade not found");
-
             if (updateOtherFeeDto.Name != null)
                 otherFee.Name = updateOtherFeeDto.Name;
 
-            if (updateOtherFeeDto.GradeId != null)
+            if (!string.IsNullOrWhiteSpace(updateOtherFeeDto.GradeName))
             {
-                var gradeID = await _context.Grades.FindAsync(updateOtherFeeDto.GradeId);
-                if (gradeID == null)
+                var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateOtherFeeDto.GradeName);
+                if (grade == null)
                     return NotFound("Grade not found");
-                otherFee.GradeId = updateOtherFeeDto.GradeId.Value;
+                otherFee.GradeId = grade.Id;
             }
 
             if (updateOtherFeeDto.Amount != null)
@@ -72,19 +68,15 @@ namespace Financial_management_backend.Controllers.Admin
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAllOtherFees([FromQuery]Guid? gradeId)
+        public async Task<IActionResult> GetAllOtherFees([FromQuery] Guid? gradeId)
         {
             var query = _context.OtherFees
-                .Include(of => of.Grade) // Include grade details
+                .Include(of => of.Grade)
                 .AsQueryable();
 
-            if(gradeId == null)
+            if (gradeId.HasValue)
             {
-                return NotFound("Grade with that ID not found");
-            }
-            if(gradeId.HasValue)
-            {
-                query = query.Where(of => of.GradeId == gradeId);
+                query = query.Where(of => of.GradeId == gradeId.Value);
             }
 
             var otherFees = await query.ToListAsync();
