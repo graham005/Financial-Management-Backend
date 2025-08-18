@@ -12,7 +12,7 @@ namespace Financial_management_backend.Services.Dtos
         [Required]
         public string Password { get; set; }
         [Required]
-        public ERole Role { get; set; }
+        public string Role { get; set; }
     }
 
 

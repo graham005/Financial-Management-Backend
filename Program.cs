@@ -87,6 +87,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddHostedService<TokenCleanupService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
+builder.Services.AddScoped<IFinancialTransactionService, FinancialTransactionService>();
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -99,7 +101,7 @@ using (var scope = app.Services.CreateScope())
             Username = "admin",
             Email = "admin@example.com",
             Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
-            Role = ERole.Admin
+            Role = "Admin"
         };
         dbContext.Users.Add(adminUser);
         dbContext.SaveChanges();

@@ -21,6 +21,12 @@ namespace Financial_management_backend.Data
         public DbSet<FeePayment> FeePayments { get; set; }
         public DbSet<CustomFee> CustomFees { get; set; }
 
+        public DbSet<FinancialTransaction> FinancialTransactions { get; set; }
+
+        public DbSet<ExpenseCategory> ExpenseCategories { get; set; }
+
+        public DbSet<Expense> Expenses { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -61,6 +67,24 @@ namespace Financial_management_backend.Data
                 .HasOne(fp => fp.Payment)
                 .WithMany()
                 .HasForeignKey(fp => fp.PaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<FinancialTransaction>()
+                .HasOne(ft => ft.Payment)
+                .WithMany()
+                .HasForeignKey(ft => ft.PaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<FinancialTransaction>()
+                .HasOne(ft => ft.Expense)
+                .WithMany()
+                .HasForeignKey(ft => ft.ExpenseId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Expense>()
+                .HasOne(fp => fp.Category)
+                .WithMany()
+                .HasForeignKey(fp => fp.ExpenseCategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<CustomFee>()

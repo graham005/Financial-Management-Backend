@@ -21,7 +21,7 @@ namespace Financial_management_backend.Controllers.Admin
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] UserDto userDto)
         {
-            if (!new[] { ERole.Admin, ERole.Accountant, ERole.StockManager, ERole.ExpenseManager }.Contains(userDto.Role))
+            if (!new[] { "Admin", "Accountant", "StockManager", "ExpenseManager" }.Contains(userDto.Role))
                 return BadRequest("Invalid role.");
 
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == userDto.Username || u.Email == userDto.Email);
