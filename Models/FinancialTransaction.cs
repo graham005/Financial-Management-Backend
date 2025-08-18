@@ -26,11 +26,8 @@ namespace Financial_management_backend.Models
         [StringLength(255)]
         public string Description { get; set; }
 
-        // Foreign key to User who created the transaction
         [Required]
-        public Guid CreatedById { get; set; }
-        [ForeignKey("CreatedById")]
-        public User CreatedBy { get; set; }
+        public Guid CreatedBy { get; set; }
 
         // Optional: Reference to payment if applicable
         public Guid? PaymentId { get; set; }
