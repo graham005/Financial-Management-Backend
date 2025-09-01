@@ -87,7 +87,12 @@ builder.Services.AddCors(options =>
 builder.Services.AddHostedService<TokenCleanupService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
+builder.Services.AddScoped<FeeService>();
+
 builder.Services.AddScoped<IFinancialTransactionService, FinancialTransactionService>();
+builder.Services.AddScoped<IFeeValidationService, FeeValidationService>();
+builder.Services.AddScoped<IAcademicTermService, AcademicTermService>();
+builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();
 
 var app = builder.Build();
 
