@@ -27,6 +27,9 @@ namespace Financial_management_backend.Data
 
         public DbSet<Expense> Expenses { get; set; }
 
+        public DbSet<RequiredItem> RequiredItems { get; set; }
+        public DbSet<ItemReceived> ItemsReceived { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -92,6 +95,19 @@ namespace Financial_management_backend.Data
                 .WithMany()
                 .HasForeignKey(cf => cf.StudentId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // ItemReceived relationships
+            modelBuilder.Entity<ItemReceived>()
+                .HasOne(ir => ir.RequiredItem)
+                .WithMany()
+                .HasForeignKey(ir => ir.RequiredItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ItemReceived>()
+                .HasOne(ir => ir.Student)
+                .WithMany()
+                .HasForeignKey(ir => ir.StudentId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
 
     }
