@@ -17,53 +17,93 @@ namespace Financial_management_backend.Services
             var student = await _context.Students.FindAsync(studentId);
             if (student == null) return 0;
 
+            // First check if there's a custom fee for this student/term/year
             var customFee = await _context.CustomFees
                 .FirstOrDefaultAsync(cf => cf.StudentId == studentId && cf.Term == term && cf.Year == year);
 
-            decimal termFee = customFee?.Amount ?? 0;
+            decimal requiredFee = 0;
 
-            if (customFee == null)
+            if (customFee != null)
             {
-                var feeStructure = await _context.FeeStructures.FirstOrDefaultAsync(fs => fs.GradeId == student.GradeId);
+                // Use custom fee amount
+                requiredFee = customFee.Amount;
+                
+                // Calculate what has been paid towards this custom fee
+                var paidAmountCustom = await _context.FeePayments
+                    .Where(fp => fp.FeeId == customFee.Id && fp.FeeType == "Custom Tuition")
+                    .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
+
+                return Math.Max(requiredFee - paidAmountCustom, 0);
+            }
+            else
+            {
+                // Use regular fee structure
+                var feeStructure = await _context.FeeStructures
+                    .FirstOrDefaultAsync(fs => fs.GradeId == student.GradeId);
+
                 if (feeStructure == null) return 0;
 
-                termFee = term switch
+                // Get the required fee for this term
+                requiredFee = term switch
                 {
                     "Term 1" => feeStructure.Term1Fee,
                     "Term 2" => feeStructure.Term2Fee,
                     "Term 3" => feeStructure.Term3Fee,
                     _ => 0
                 };
+
+                if (requiredFee == 0) return 0;
+
+                // Calculate what has been paid towards regular tuition for this term/year
+                var paidAmountRegular = await _context.FeePayments
+                    .Where(fp => fp.FeeId == feeStructure.Id && 
+                               fp.FeeType == "Tuition" &&
+                               fp.Payment.StudentId == studentId &&
+                               fp.Payment.Term == term &&
+                               fp.Payment.PaymentDate.Year == year &&
+                               fp.Payment.Status == "Completed")
+                    .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
+
+                return Math.Max(requiredFee - paidAmountRegular, 0);
             }
-
-            var totalPaymentsForTerm = await _context.Payments
-                .Where(p => p.StudentId == studentId && p.Term == term && p.PaymentDate.Year == year)
-                .SumAsync(p => (decimal?)p.Amount) ?? 0;
-
-            return Math.Max(termFee - totalPaymentsForTerm, 0);
         }
 
-        public async Task<decimal> CalculateCumulativeArrears(Guid studentId, string currentTerm, int currentYear)
+        public async Task<decimal> CalculateCumulativeArrears(Guid studentId, string upToTerm, int upToYear)
         {
             var student = await _context.Students.FindAsync(studentId);
             if (student == null) return 0;
 
             var termsInOrder = new[] { "Term 1", "Term 2", "Term 3" };
-
             decimal cumulativeArrears = 0;
 
-            foreach (var term in termsInOrder)
+            // Calculate arrears from enrollment year up to (but not including) the specified term/year
+            for (int year = student.EnrollmentYear; year <= upToYear; year++)
             {
-                if (currentYear < student.EnrollmentYear ||
-                    (currentYear == student.EnrollmentYear && Array.IndexOf(termsInOrder, term) < Array.IndexOf(termsInOrder, student.EnrollmentTerm)))
+                foreach (var term in termsInOrder)
                 {
-                    continue;
+                    // Skip terms before student enrollment
+                    if (year == student.EnrollmentYear && 
+                        Array.IndexOf(termsInOrder, term) < Array.IndexOf(termsInOrder, student.EnrollmentTerm))
+                    {
+                        continue;
+                    }
+
+                    // Stop when we reach the specified term in the specified year (don't include current term)
+                    if (year == upToYear && term == upToTerm)
+                    {
+                        break;
+                    }
+
+                    // If we're past the specified year, stop
+                    if (year > upToYear)
+                    {
+                        break;
+                    }
+
+                    // Calculate outstanding fees for this term using the same logic as CalculateOutstandingFees
+                    var outstandingForTerm = await CalculateOutstandingFees(studentId, term, year);
+                    cumulativeArrears += outstandingForTerm;
                 }
-
-                if (term == currentTerm) break;
-
-                var termFee = await CalculateOutstandingFees(studentId, term, currentYear);
-                cumulativeArrears += termFee;
             }
 
             return cumulativeArrears;
