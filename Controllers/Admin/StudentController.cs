@@ -69,6 +69,7 @@ namespace Financial_management_backend.Controllers.Admin
                 GradeId = grade.Id,
                 ParentId = parent.Id,
                 EnrollmentTerm = enrollmentTerm,
+                EnrollmentYear = enrollmentYear
 
             };
 
