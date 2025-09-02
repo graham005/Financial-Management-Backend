@@ -24,5 +24,12 @@ namespace Financial_management_backend.Models
         [Required]
         [Range(0, double.MaxValue)]
         public decimal Amount { get; set; }
+
+        [Required]
+        [StringLength(20)]
+        public string Term { get; set; } // "Term 1", "Term 2", "Term 3"
+
+        [Required]
+        public int Year { get; set; } // 2023, 2024, etc.
     }
 }
