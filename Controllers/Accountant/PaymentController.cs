@@ -33,7 +33,7 @@ namespace Financial_management_backend.Controllers.Accountant
             _academicTermService = academicTermService;
         }
 
-        // Get available fees for a student to help with payment allocation
+        // FIXED: Get available fees for a student including overdue fees
         [HttpGet("student/{studentId}/available-fees")]
         public async Task<IActionResult> GetAvailableFeesForStudent(Guid studentId)
         {
@@ -49,7 +49,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 var (currentTerm, currentYear) = _academicTermService.GetCurrentAcademicTerm();
                 var availableFees = new List<AvailableFeeItemDto>();
 
-                // Get all terms from enrollment to current
+                // Get all terms from enrollment to current (including current)
                 var terms = new[] { "Term 1", "Term 2", "Term 3" };
                 
                 for (int year = student.EnrollmentYear; year <= currentYear; year++)
@@ -61,14 +61,16 @@ namespace Financial_management_backend.Controllers.Accountant
                             Array.IndexOf(terms, term) < Array.IndexOf(terms, student.EnrollmentTerm))
                             continue;
 
-                        // Add tuition fees
+                        // Skip future terms
+                        if (year == currentYear && 
+                            Array.IndexOf(terms, term) > Array.IndexOf(terms, currentTerm))
+                            continue;
+
+                        // Add tuition fees for all terms (past, current)
                         await AddTuitionFees(availableFees, studentId, term, year, student.GradeId);
                         
-                        // Add other fees for current and future terms only
-                        if (year >= currentYear)
-                        {
-                            await AddOtherFees(availableFees, studentId, term, year, student.GradeId);
-                        }
+                        // FIXED: Add other fees for ALL terms since enrollment (not just current/future)
+                        await AddOtherFees(availableFees, studentId, term, year, student.GradeId);
                     }
                 }
 
@@ -88,6 +90,7 @@ namespace Financial_management_backend.Controllers.Accountant
             }
         }
 
+        // UPDATE: Record payment method to store term/year in FeePayment
         [HttpPost]
         public async Task<IActionResult> RecordPayment([FromBody] PaymentDto paymentDto)
         {
@@ -110,8 +113,10 @@ namespace Financial_management_backend.Controllers.Accountant
                 if (userId == null)
                     return Unauthorized("User ID not found in token.");
 
-                // Auto-determine term from payment date
-                var (paymentTerm, paymentYear) = _academicTermService.GetAcademicTermForDate(paymentDto.PaymentDate);
+                // Use the primary term from fee allocations
+                var primaryAllocation = paymentDto.FeeAllocations.OrderBy(fa => fa.Year).ThenBy(fa => fa.Term).First();
+                var distinctTerms = paymentDto.FeeAllocations.Select(fa => $"{fa.Term} {fa.Year}").Distinct().ToList();
+                var paymentTerm = distinctTerms.Count == 1 ? primaryAllocation.Term : "Mixed";
 
                 var payment = new Payment
                 {
@@ -119,7 +124,7 @@ namespace Financial_management_backend.Controllers.Accountant
                     StudentId = paymentDto.StudentId,
                     Amount = paymentDto.Amount,
                     PaymentDate = paymentDto.PaymentDate,
-                    Term = paymentTerm, // Auto-determined term
+                    // REMOVED: Term = paymentTerm, 
                     PaymentMethod = paymentDto.PaymentMethod,
                     Status = "Completed",
                     CreatedBy = (Guid)userId
@@ -128,7 +133,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 await _context.Payments.AddAsync(payment);
                 await _context.SaveChangesAsync();
 
-                // Create fee payment records based on user's allocation
+                // UPDATED: Create fee payment records with term and year information
                 foreach (var feeAllocation in paymentDto.FeeAllocations)
                 {
                     var feePayment = new FeePayment
@@ -138,6 +143,8 @@ namespace Financial_management_backend.Controllers.Accountant
                         FeeId = feeAllocation.FeeId,
                         FeeType = feeAllocation.FeeType,
                         Amount = feeAllocation.Amount,
+                        Term = feeAllocation.Term,
+                        Year = feeAllocation.Year
                     };
 
                     await _context.FeePayments.AddAsync(feePayment);
@@ -206,7 +213,7 @@ namespace Financial_management_backend.Controllers.Accountant
                     PaidAmount = paidAmount,
                     OutstandingAmount = Math.Max(customFee.Amount - paidAmount, 0),
                     Description = $"Custom tuition fee for {term} {year}",
-                    IsOverdue = year < DateTime.Now.Year || (year == DateTime.Now.Year && IsTermOverdue(term))
+                    IsOverdue = IsTermOverdue(term, year)
                 });
                 return;
             }
@@ -239,12 +246,13 @@ namespace Financial_management_backend.Controllers.Accountant
                         PaidAmount = paidAmount,
                         OutstandingAmount = Math.Max(termFee - paidAmount, 0),
                         Description = $"Tuition fee for {term} {year}",
-                        IsOverdue = year < DateTime.Now.Year || (year == DateTime.Now.Year && IsTermOverdue(term))
+                        IsOverdue = IsTermOverdue(term, year)
                     });
                 }
             }
         }
 
+        // FIXED: AddOtherFees now works for all terms, not just current/future
         private async Task AddOtherFees(List<AvailableFeeItemDto> availableFees, Guid studentId, string term, int year, Guid gradeId)
         {
             var otherFees = await _context.OtherFees
@@ -253,54 +261,81 @@ namespace Financial_management_backend.Controllers.Accountant
 
             foreach (var otherFee in otherFees)
             {
-                var paidAmount = await GetPaidAmountForOtherFee(otherFee.Id, studentId, year);
-                availableFees.Add(new AvailableFeeItemDto
+                // FIXED: Get paid amount for this specific term/year
+                var paidAmount = await GetPaidAmountForOtherFee(otherFee.Id, studentId, term, year);
+                var outstandingAmount = Math.Max(otherFee.Amount - paidAmount, 0);
+
+                // Only add if there's an outstanding amount
+                if (outstandingAmount > 0)
                 {
-                    FeeId = otherFee.Id,
-                    FeeType = otherFee.Name,
-                    FeeSource = "OtherFee",
-                    Term = term,
-                    Year = year,
-                    TotalAmount = otherFee.Amount,
-                    PaidAmount = paidAmount,
-                    OutstandingAmount = Math.Max(otherFee.Amount - paidAmount, 0),
-                    Description = $"{otherFee.Name} for {term} {year}",
-                    IsOverdue = false // Other fees are typically not overdue
-                });
+                    availableFees.Add(new AvailableFeeItemDto
+                    {
+                        FeeId = otherFee.Id,
+                        FeeType = otherFee.Name,
+                        FeeSource = "OtherFee",
+                        Term = term,
+                        Year = year,
+                        TotalAmount = otherFee.Amount,
+                        PaidAmount = paidAmount,
+                        OutstandingAmount = outstandingAmount,
+                        Description = $"{otherFee.Name} for {term} {year}",
+                        IsOverdue = IsTermOverdue(term, year)
+                    });
+                }
             }
         }
 
+        // Update the payment method helper functions
         private async Task<decimal> GetPaidAmountForFee(Guid feeId, string feeType)
         {
             return await _context.FeePayments
-                .Where(fp => fp.FeeId == feeId && fp.FeeType == feeType)
+                .Where(fp => fp.FeeId == feeId && 
+                           fp.FeeType == feeType &&
+                           fp.Payment.Status == "Completed")
                 .SumAsync(fp => fp.Amount);
         }
 
+        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
         private async Task<decimal> GetPaidAmountForTuition(Guid studentId, string term, int year)
         {
             return await _context.FeePayments
                 .Where(fp => fp.Payment.StudentId == studentId && 
                            fp.FeeType == "Tuition" && 
-                           fp.Payment.Term == term && 
-                           fp.Payment.PaymentDate.Year == year)
+                           fp.Term == term &&
+                           fp.Year == year &&
+                           fp.Payment.Status == "Completed")
                 .SumAsync(fp => fp.Amount);
         }
 
-        private async Task<decimal> GetPaidAmountForOtherFee(Guid otherFeeId, Guid studentId, int year)
+        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
+        private async Task<decimal> GetPaidAmountForOtherFee(Guid otherFeeId, Guid studentId, string term, int year)
         {
             return await _context.FeePayments
                 .Where(fp => fp.FeeId == otherFeeId && 
                            fp.Payment.StudentId == studentId &&
-                           fp.Payment.PaymentDate.Year == year)
+                           fp.Term == term &&
+                           fp.Year == year &&
+                           fp.Payment.Status == "Completed")
                 .SumAsync(fp => fp.Amount);
         }
 
-        private bool IsTermOverdue(string term)
+        // FIXED: IsTermOverdue now uses AcademicTermService and compares both year and term
+        private bool IsTermOverdue(string term, int year)
         {
-            var (currentTerm, _) = _academicTermService.GetCurrentAcademicTerm();
-            var terms = new[] { "Term 1", "Term 2", "Term 3" };
-            return Array.IndexOf(terms, term) < Array.IndexOf(terms, currentTerm);
+            var (currentTerm, currentYear) = _academicTermService.GetCurrentAcademicTerm();
+            
+            // If the year is in the past, it's overdue
+            if (year < currentYear) return true;
+            
+            // If it's the current year, check the term
+            if (year == currentYear)
+            {
+                var terms = new[] { "Term 1", "Term 2", "Term 3" };
+                return Array.IndexOf(terms, term) < Array.IndexOf(terms, currentTerm);
+            }
+            
+            // If it's a future year, it's not overdue
+            return false;
         }
 
         // GET: api/accountant/payment/{id}
@@ -309,9 +344,19 @@ namespace Financial_management_backend.Controllers.Accountant
         {
             var payment = await _context.Payments
                 .Include(p => p.Student)
+                .Include(p => p.FeePayments)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (payment == null) return NotFound("Payment not found.");
+
+            var termAllocations = payment.FeePayments
+                .GroupBy(fp => new { fp.Term, fp.Year })
+                .Select(g => new {
+                    Term = g.Key.Term,
+                    Year = g.Key.Year,
+                    Amount = g.Sum(fp => fp.Amount)
+                })
+                .ToList();
 
             return Ok(new
             {
@@ -319,9 +364,10 @@ namespace Financial_management_backend.Controllers.Accountant
                 StudentName = payment.Student.Name,
                 payment.Amount,
                 payment.PaymentDate,
-                payment.Term,
+                // REMOVED: payment.Term,
                 payment.PaymentMethod,
                 payment.Status,
+                TermAllocations = termAllocations
             });
         }
 
@@ -329,19 +375,18 @@ namespace Financial_management_backend.Controllers.Accountant
         [HttpGet]
         public async Task<IActionResult> GetAllPayments(
             [FromQuery] Guid? studentId,
-            [FromQuery] string term,
             [FromQuery] DateTime? startDate,
             [FromQuery] DateTime? endDate)
         {
             var query = _context.Payments
                 .Include(p => p.Student)
+                .Include(p => p.FeePayments) 
                 .AsQueryable();
 
             if (studentId.HasValue)
                 query = query.Where(p => p.StudentId == studentId);
 
-            if (!string.IsNullOrEmpty(term))
-                query = query.Where(p => p.Term == term);
+            // UPDATED: Filter by FeePayment.Term if term parameter is provided
 
             if (startDate.HasValue)
                 query = query.Where(p => p.PaymentDate >= startDate.Value);
@@ -357,9 +402,12 @@ namespace Financial_management_backend.Controllers.Accountant
                 StudentName = p.Student.Name,
                 p.Amount,
                 p.PaymentDate,
-                p.Term,
                 p.PaymentMethod,
-                p.Status
+                p.Status,
+                Terms = p.FeePayments
+                    .GroupBy(fp => new { fp.Term, fp.Year })
+                    .Select(g => $"{g.Key.Term} {g.Key.Year}")
+                    .ToList()
             }));
         }
 
