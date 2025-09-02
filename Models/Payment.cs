@@ -22,10 +22,6 @@ namespace Financial_management_backend.Models
         public DateTime PaymentDate { get; set; }
 
         [Required]
-        [StringLength(20)]
-        public string Term { get; set; }
-
-        [Required]
         [StringLength(50)]
         public string PaymentMethod { get; set; }
 
@@ -36,5 +32,8 @@ namespace Financial_management_backend.Models
         // Audit Fields
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid CreatedBy { get; set; }
+
+        // Navigation property for FeePayments
+        public virtual ICollection<FeePayment> FeePayments { get; set; } = new List<FeePayment>();
     }
 }
