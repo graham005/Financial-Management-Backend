@@ -74,12 +74,18 @@ namespace Financial_management_backend.Services
             return allocations;
         }
 
+        // In AllocateToTuition, add a null check for student before dereferencing student.GradeId
         private async Task<(List<FeeAllocationDto> allocations, decimal allocated)> AllocateToTuition(
             Guid studentId, string term, int year, decimal availableAmount)
         {
             var allocations = new List<FeeAllocationDto>();
             var student = await _context.Students.FindAsync(studentId);
-            
+
+            if (student == null)
+            {
+                return (allocations, 0);
+            }
+
             // Check for custom fee first
             var customFee = await _context.CustomFees
                 .FirstOrDefaultAsync(cf => cf.StudentId == studentId && cf.Term == term && cf.Year == year);
@@ -98,6 +104,7 @@ namespace Financial_management_backend.Services
                         FeeType = "Custom Tuition",
                         FeeSource = "CustomFee",
                         Term = term,
+                        Year = year,
                         Amount = allocation
                     });
                 }
@@ -107,7 +114,7 @@ namespace Financial_management_backend.Services
             // Regular tuition fee
             var feeStructure = await _context.FeeStructures
                 .FirstOrDefaultAsync(fs => fs.GradeId == student.GradeId);
-            
+
             if (feeStructure != null)
             {
                 var termFee = term switch
@@ -130,6 +137,7 @@ namespace Financial_management_backend.Services
                         FeeType = "Tuition",
                         FeeSource = "FeeStructure",
                         Term = term,
+                        Year = year,
                         Amount = allocation
                     });
                 }
@@ -139,12 +147,18 @@ namespace Financial_management_backend.Services
             return (allocations, 0);
         }
 
+        // In AllocateToOtherFees, add a null check for student before dereferencing student.GradeId
         private async Task<(List<FeeAllocationDto> allocations, decimal allocated)> AllocateToOtherFees(
             Guid studentId, string term, int year, decimal availableAmount)
         {
             var allocations = new List<FeeAllocationDto>();
             var totalAllocated = 0m;
             var student = await _context.Students.FindAsync(studentId);
+
+            if (student == null)
+            {
+                return (allocations, totalAllocated);
+            }
 
             var otherFees = await _context.OtherFees
                 .Where(of => of.GradeId == student.GradeId)
@@ -166,6 +180,7 @@ namespace Financial_management_backend.Services
                         FeeType = otherFee.Name,
                         FeeSource = "OtherFee",
                         Term = term,
+                        Year = year,
                         Amount = allocation
                     });
 
@@ -177,29 +192,39 @@ namespace Financial_management_backend.Services
             return (allocations, totalAllocated);
         }
 
+        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
         private async Task<decimal> GetPaidAmountForTuition(Guid studentId, string term, int year)
         {
             return await _context.FeePayments
                 .Where(fp => fp.Payment.StudentId == studentId && 
                            fp.FeeType == "Tuition" && 
-                           fp.Payment.Term == term && 
-                           fp.Payment.PaymentDate.Year == year)
+                           fp.Term == term &&                    // Direct field access
+                           fp.Year == year &&                    // Direct field access
+                           fp.Payment.Status == "Completed")
                 .SumAsync(fp => fp.Amount);
         }
 
+        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
         private async Task<decimal> GetPaidAmountForCustomFee(Guid customFeeId, string term, int year)
         {
             return await _context.FeePayments
                 .Where(fp => fp.FeeId == customFeeId && 
-                           fp.FeeType == "Custom Tuition")
+                           fp.FeeType == "Custom Tuition" &&
+                           fp.Term == term &&                    // Direct field access
+                           fp.Year == year &&                    // Direct field access
+                           fp.Payment.Status == "Completed")
                 .SumAsync(fp => fp.Amount);
         }
 
+        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
         private async Task<decimal> GetPaidAmountForOtherFee(Guid otherFeeId, Guid studentId, string term, int year)
         {
             return await _context.FeePayments
                 .Where(fp => fp.FeeId == otherFeeId && 
-                           fp.Payment.StudentId == studentId)
+                           fp.Payment.StudentId == studentId &&
+                           fp.Term == term &&                    // Direct field access
+                           fp.Year == year &&                    // Direct field access
+                           fp.Payment.Status == "Completed")
                 .SumAsync(fp => fp.Amount);
         }
 

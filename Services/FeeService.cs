@@ -28,9 +28,13 @@ namespace Financial_management_backend.Services
                 // Use custom fee amount
                 requiredFee = customFee.Amount;
                 
-                // Calculate what has been paid towards this custom fee
+                // Use FeePayment.Term and FeePayment.Year directly
                 var paidAmountCustom = await _context.FeePayments
-                    .Where(fp => fp.FeeId == customFee.Id && fp.FeeType == "Custom Tuition")
+                    .Where(fp => fp.FeeId == customFee.Id && 
+                               fp.FeeType == "Custom Tuition" &&
+                               fp.Term == term &&
+                               fp.Year == year &&
+                               fp.Payment.Status == "Completed")
                     .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
 
                 return Math.Max(requiredFee - paidAmountCustom, 0);
@@ -54,13 +58,13 @@ namespace Financial_management_backend.Services
 
                 if (requiredFee == 0) return 0;
 
-                // Calculate what has been paid towards regular tuition for this term/year
+                // Use FeePayment.Term and FeePayment.Year directly
                 var paidAmountRegular = await _context.FeePayments
                     .Where(fp => fp.FeeId == feeStructure.Id && 
                                fp.FeeType == "Tuition" &&
                                fp.Payment.StudentId == studentId &&
-                               fp.Payment.Term == term &&
-                               fp.Payment.PaymentDate.Year == year &&
+                               fp.Term == term &&
+                               fp.Year == year &&
                                fp.Payment.Status == "Completed")
                     .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
 
