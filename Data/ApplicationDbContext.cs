@@ -68,7 +68,7 @@ namespace Financial_management_backend.Data
 
             modelBuilder.Entity<FeePayment>()
                 .HasOne(fp => fp.Payment)
-                .WithMany()
+                .WithMany(p => p.FeePayments) 
                 .HasForeignKey(fp => fp.PaymentId)
                 .OnDelete(DeleteBehavior.Restrict);
 
