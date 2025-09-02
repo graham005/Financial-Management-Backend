@@ -1,6 +1,5 @@
 using Financial_management_backend.Data;
 using Financial_management_backend.Services.Dtos;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
 namespace Financial_management_backend.Services
@@ -65,6 +64,19 @@ namespace Financial_management_backend.Services
             if (allocation.Amount <= 0)
                 return (false, "Fee allocation amount must be positive", "");
 
+            // Validate required fields
+            if (string.IsNullOrEmpty(allocation.Term))
+                return (false, "Term is required for fee allocation", "");
+
+            if (allocation.Year <= 0)
+                return (false, "Year is required for fee allocation", "");
+
+            if (string.IsNullOrEmpty(allocation.FeeType))
+                return (false, "Fee type is required for fee allocation", "");
+
+            if (string.IsNullOrEmpty(allocation.FeeSource))
+                return (false, "Fee source is required for fee allocation", "");
+
             return allocation.FeeSource?.ToLower() switch
             {
                 "feestructure" => await ValidateFeeStructureAsync(allocation, studentId),
@@ -78,9 +90,6 @@ namespace Financial_management_backend.Services
             FeeAllocationDto allocation, Guid studentId)
         {
             var student = await _context.Students.FindAsync(studentId);
-            if (student == null)
-                return (false, "Student not found", "");
-
             var feeStructure = await _context.FeeStructures
                 .FirstOrDefaultAsync(fs => fs.Id == allocation.FeeId && fs.GradeId == student.GradeId);
 
@@ -98,13 +107,13 @@ namespace Financial_management_backend.Services
             if (expectedAmount == 0)
                 return (false, $"Invalid term: {allocation.Term}", "");
 
-            // Check how much has been paid for this specific fee
+            // Use FeePayment Term/Year for validation
             var paidAmount = await _context.FeePayments
-                .Where(fp => fp.FeeId == allocation.FeeId &&
+                .Where(fp => fp.FeeId == allocation.FeeId && 
                            fp.Payment.StudentId == studentId &&
                            fp.FeeType == "Tuition" &&
-                           fp.Payment.Term == allocation.Term &&
-                           fp.Payment.PaymentDate.Year == allocation.Year &&
+                           fp.Term == allocation.Term &&
+                           fp.Year == allocation.Year &&
                            fp.Payment.Status == "Completed")
                 .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
 
@@ -114,7 +123,7 @@ namespace Financial_management_backend.Services
             if (allocation.Amount > outstandingAmount && outstandingAmount > 0)
             {
                 var excess = allocation.Amount - outstandingAmount;
-                warningMessage = $"Excess payment of {excess:C} for {allocation.Term} tuition. This will be treated as advance payment.";
+                warningMessage = $"Excess payment of {excess:C} for {allocation.Term} {allocation.Year} tuition. This will be treated as advance payment.";
             }
             else if (outstandingAmount <= 0)
             {
@@ -128,34 +137,32 @@ namespace Financial_management_backend.Services
             FeeAllocationDto allocation, Guid studentId)
         {
             var student = await _context.Students.FindAsync(studentId);
-            if (student == null)
-                return (false, "Student not found", "");
-
             var otherFee = await _context.OtherFees
                 .FirstOrDefaultAsync(of => of.Id == allocation.FeeId && of.GradeId == student.GradeId);
 
             if (otherFee == null)
                 return (false, "Other fee not found for student's grade", "");
 
-            // Check how much has been paid for this specific other fee
+            // UPDATED: Use FeePayment Term/Year for validation
             var paidForThisFee = await _context.FeePayments
-                .Where(fp => fp.FeeId == allocation.FeeId &&
+                .Where(fp => fp.FeeId == allocation.FeeId && 
                            fp.Payment.StudentId == studentId &&
-                           fp.Payment.PaymentDate.Year == allocation.Year &&
+                           fp.Term == allocation.Term &&
+                           fp.Year == allocation.Year &&
                            fp.Payment.Status == "Completed")
                 .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
 
             var remainingAmount = Math.Max(otherFee.Amount - paidForThisFee, 0);
-
+            
             string warningMessage = "";
             if (allocation.Amount > remainingAmount && remainingAmount > 0)
             {
                 var excess = allocation.Amount - remainingAmount;
-                warningMessage = $"Excess payment of {excess:C} for {otherFee.Name}. Student has overpaid.";
+                warningMessage = $"Excess payment of {excess:C} for {otherFee.Name} ({allocation.Term} {allocation.Year}). Student has overpaid.";
             }
             else if (remainingAmount <= 0)
             {
-                warningMessage = $"{otherFee.Name} is already fully paid. This is an overpayment.";
+                warningMessage = $"{otherFee.Name} for {allocation.Term} {allocation.Year} is already fully paid. This is an overpayment.";
             }
 
             return (true, "", warningMessage);
@@ -173,10 +180,12 @@ namespace Financial_management_backend.Services
             if (customFee == null)
                 return (false, "Custom fee not found for student, term, and year", "");
 
-            // Check payments against this custom fee
+            // UPDATED: Use FeePayment Term/Year for validation
             var paidForCustomFee = await _context.FeePayments
                 .Where(fp => fp.FeeId == allocation.FeeId && 
                            fp.Payment.StudentId == studentId &&
+                           fp.Term == allocation.Term &&
+                           fp.Year == allocation.Year &&
                            fp.Payment.Status == "Completed")
                 .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
 
@@ -186,11 +195,11 @@ namespace Financial_management_backend.Services
             if (allocation.Amount > remainingAmount && remainingAmount > 0)
             {
                 var excess = allocation.Amount - remainingAmount;
-                warningMessage = $"Excess payment of {excess:C} for custom fee. Student has overpaid.";
+                warningMessage = $"Excess payment of {excess:C} for custom fee ({allocation.Term} {allocation.Year}). Student has overpaid.";
             }
             else if (remainingAmount <= 0)
             {
-                warningMessage = $"Custom fee is already fully paid. This is an overpayment.";
+                warningMessage = $"Custom fee for {allocation.Term} {allocation.Year} is already fully paid. This is an overpayment.";
             }
 
             return (true, "", warningMessage);
