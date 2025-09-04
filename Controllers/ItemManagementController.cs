@@ -23,7 +23,7 @@ namespace Financial_management_backend.Controllers
         // ----------- Required Items Methods (Admin) -----------
 
         [HttpGet("required-items")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Accountant")]
         public async Task<IActionResult> GetAllRequiredItems()
         {
             try
@@ -47,7 +47,7 @@ namespace Financial_management_backend.Controllers
         }
 
         [HttpGet("required-items/{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Accountant")]
         public async Task<IActionResult> GetRequiredItemById(Guid id)
         {
             try
