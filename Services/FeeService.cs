@@ -17,6 +17,20 @@ namespace Financial_management_backend.Services
             var student = await _context.Students.FindAsync(studentId);
             if (student == null) return 0;
 
+            // First check for fee obligations - these represent what the student was actually charged
+            var obligations = await _context.StudentFeeObligations
+                .Where(o => o.StudentId == studentId && o.Term == term && o.Year == year)
+                .ToListAsync();
+                
+            if (obligations.Any())
+            {
+                // Sum up all outstanding amounts from obligations
+                return obligations.Sum(o => o.OutstandingAmount);
+            }
+            
+            // If no obligations found, this might be a current term that hasn't been processed yet
+            // Fall back to calculating from current fee structure (with a note that this should be rare)
+            
             // First check if there's a custom fee for this student/term/year
             var customFee = await _context.CustomFees
                 .FirstOrDefaultAsync(cf => cf.StudentId == studentId && cf.Term == term && cf.Year == year);
@@ -28,7 +42,6 @@ namespace Financial_management_backend.Services
                 // Use custom fee amount
                 requiredFee = customFee.Amount;
                 
-                // Use FeePayment.Term and FeePayment.Year directly
                 var paidAmountCustom = await _context.FeePayments
                     .Where(fp => fp.FeeId == customFee.Id && 
                                fp.FeeType == "Custom Tuition" &&
@@ -41,27 +54,47 @@ namespace Financial_management_backend.Services
             }
             else
             {
-                // Use regular fee structure
-                var feeStructure = await _context.FeeStructures
-                    .FirstOrDefaultAsync(fs => fs.GradeId == student.GradeId);
-
-                if (feeStructure == null) return 0;
-
-                // Get the required fee for this term
-                requiredFee = term switch
+                // Use regular fee structure (try to find historical one first)
+                var feeStructureHistory = await _context.FeeStructureHistories
+                    .Where(fsh => fsh.GradeId == student.GradeId && 
+                                  fsh.AcademicYear <= year)
+                    .OrderByDescending(fsh => fsh.AcademicYear)
+                    .ThenByDescending(fsh => fsh.EffectiveFrom)
+                    .FirstOrDefaultAsync();
+                
+                if (feeStructureHistory != null)
                 {
-                    "Term 1" => feeStructure.Term1Fee,
-                    "Term 2" => feeStructure.Term2Fee,
-                    "Term 3" => feeStructure.Term3Fee,
-                    _ => 0
-                };
+                    // Get the required fee for this term from historical record
+                    requiredFee = term switch
+                    {
+                        "Term 1" => feeStructureHistory.Term1Fee,
+                        "Term 2" => feeStructureHistory.Term2Fee,
+                        "Term 3" => feeStructureHistory.Term3Fee,
+                        _ => 0
+                    };
+                }
+                else
+                {
+                    // Fall back to current fee structure if no historical record
+                    var feeStructure = await _context.FeeStructures
+                        .FirstOrDefaultAsync(fs => fs.GradeId == student.GradeId);
+
+                    if (feeStructure == null) return 0;
+
+                    // Get the required fee for this term
+                    requiredFee = term switch
+                    {
+                        "Term 1" => feeStructure.Term1Fee,
+                        "Term 2" => feeStructure.Term2Fee,
+                        "Term 3" => feeStructure.Term3Fee,
+                        _ => 0
+                    };
+                }
 
                 if (requiredFee == 0) return 0;
 
-                // Use FeePayment.Term and FeePayment.Year directly
                 var paidAmountRegular = await _context.FeePayments
-                    .Where(fp => fp.FeeId == feeStructure.Id && 
-                               fp.FeeType == "Tuition" &&
+                    .Where(fp => fp.FeeType == "Tuition" &&
                                fp.Payment.StudentId == studentId &&
                                fp.Term == term &&
                                fp.Year == year &&
