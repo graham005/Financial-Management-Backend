@@ -93,6 +93,7 @@ builder.Services.AddScoped<IFinancialTransactionService, FinancialTransactionSer
 builder.Services.AddScoped<IFeeValidationService, FeeValidationService>();
 builder.Services.AddScoped<IAcademicTermService, AcademicTermService>();
 builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();
+builder.Services.AddScoped<FeeObligationService>();
 
 var app = builder.Build();
 
