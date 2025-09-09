@@ -1,6 +1,8 @@
 ﻿using Financial_management_backend.Data;
 using Financial_management_backend.Models;
+using Financial_management_backend.Services;
 using Financial_management_backend.Services.Dtos;
+using Financial_management_backend.Services.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +13,14 @@ namespace Financial_management_backend.Controllers.Admin
     public class FeeStructureController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IAcademicTermService _academicTermService;
 
-        public FeeStructureController(ApplicationDbContext context)
+        public FeeStructureController(
+            ApplicationDbContext context,
+            IAcademicTermService academicTermService)
         {
             _context = context;
+            _academicTermService = academicTermService;
         }
 
         [HttpGet]
@@ -66,7 +72,7 @@ namespace Financial_management_backend.Controllers.Admin
         [HttpPost]
         public async Task<IActionResult> CreateFeeStructure([FromBody] CreateFeeStructureDto createFeeStructureDto)
         {
-            // Find the Grade by NAme 
+            // Find the Grade by Name 
             var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == createFeeStructureDto.GradeName);
             if (grade == null)
                 return NotFound("Grade not found.");
@@ -78,6 +84,14 @@ namespace Financial_management_backend.Controllers.Admin
             if (existingFeeStructure != null)
                 return Conflict("A fee structure for this grade already exists.");
 
+            var userId = User.GetUserId();
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
+            
+            // Get current academic year from service
+            var (_, currentYear) = _academicTermService.GetCurrentAcademicTerm();
+
+            // Create the regular fee structure
             var feeStructure = new FeeStructure
             {
                 GradeId = grade.Id,
@@ -86,7 +100,21 @@ namespace Financial_management_backend.Controllers.Admin
                 Term3Fee = createFeeStructureDto.Term3Fee,
             };
 
+            // Create a historical record
+            var feeStructureHistory = new FeeStructureHistory
+            {
+                GradeId = grade.Id,
+                Term1Fee = createFeeStructureDto.Term1Fee,
+                Term2Fee = createFeeStructureDto.Term2Fee,
+                Term3Fee = createFeeStructureDto.Term3Fee,
+                AcademicYear = currentYear,
+                EffectiveFrom = DateTime.UtcNow,
+                CreatedBy = (Guid)userId,
+                CreatedAt = DateTime.UtcNow
+            };
+
             await _context.FeeStructures.AddAsync(feeStructure);
+            await _context.FeeStructureHistories.AddAsync(feeStructureHistory);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetFeeStructureById), new {id = feeStructure.Id}, feeStructure);
@@ -99,16 +127,49 @@ namespace Financial_management_backend.Controllers.Admin
             if (feeStructure == null) 
                 return NotFound();
 
-            // Find the Grade by NAme
+            // Find the Grade by Name
             var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateFeeStructureDto.GradeName);
             if (grade == null) 
                 return NotFound("Grade with that ID not found");
+                
+            var userId = User.GetUserId();
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
+            
+            // Get current academic year from service
+            var (_, currentYear) = _academicTermService.GetCurrentAcademicTerm();
 
+            // Find the previous historical record and set its end date
+            var previousHistory = await _context.FeeStructureHistories
+                .Where(h => h.GradeId == feeStructure.GradeId && h.EffectiveTo == null)
+                .OrderByDescending(h => h.EffectiveFrom)
+                .FirstOrDefaultAsync();
+                
+            if (previousHistory != null)
+            {
+                previousHistory.EffectiveTo = DateTime.UtcNow;
+            }
+
+            // Create a new historical record
+            var feeStructureHistory = new FeeStructureHistory
+            {
+                GradeId = grade.Id,
+                Term1Fee = updateFeeStructureDto.Term1Fee,
+                Term2Fee = updateFeeStructureDto.Term2Fee,
+                Term3Fee = updateFeeStructureDto.Term3Fee,
+                AcademicYear = currentYear,
+                EffectiveFrom = DateTime.UtcNow,
+                CreatedBy = (Guid)userId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Update the current fee structure
             feeStructure.GradeId = grade.Id;
             feeStructure.Term1Fee = updateFeeStructureDto.Term1Fee;
             feeStructure.Term2Fee = updateFeeStructureDto.Term2Fee;
             feeStructure.Term3Fee = updateFeeStructureDto.Term3Fee;
 
+            await _context.FeeStructureHistories.AddAsync(feeStructureHistory);
             await _context.SaveChangesAsync();
 
             return Ok("FeeStructure updated successfully");
