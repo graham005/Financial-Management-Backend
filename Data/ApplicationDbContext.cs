@@ -17,24 +17,23 @@ namespace Financial_management_backend.Data
         public DbSet<FeeStructure> FeeStructures { get; set; }
         public DbSet<OtherFee> OtherFees { get; set; }
         public DbSet<Payment> Payments { get; set; }
-
         public DbSet<FeePayment> FeePayments { get; set; }
         public DbSet<CustomFee> CustomFees { get; set; }
-
         public DbSet<FinancialTransaction> FinancialTransactions { get; set; }
-
         public DbSet<ExpenseCategory> ExpenseCategories { get; set; }
-
         public DbSet<Expense> Expenses { get; set; }
-
         public DbSet<RequiredItem> RequiredItems { get; set; }
         public DbSet<ItemReceived> ItemsReceived { get; set; }
+
+        // New database sets for fee history and obligations
+        public DbSet<FeeStructureHistory> FeeStructureHistories { get; set; }
+        public DbSet<StudentFeeObligation> StudentFeeObligations { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            //Configuring of relationship
+            //Configuring of relationships
 
             modelBuilder.Entity<Student>()
                 .HasOne(s => s.Grade)
@@ -53,6 +52,20 @@ namespace Financial_management_backend.Data
                 .WithMany()
                 .HasForeignKey(fs => fs.GradeId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // New Fee Structure History relationships
+            modelBuilder.Entity<FeeStructureHistory>()
+                .HasOne(fsh => fsh.Grade)
+                .WithMany()
+                .HasForeignKey(fsh => fsh.GradeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Student Fee Obligation relationships
+            modelBuilder.Entity<StudentFeeObligation>()
+                .HasOne(sfo => sfo.Student)
+                .WithMany()
+                .HasForeignKey(sfo => sfo.StudentId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<OtherFee>()
                 .HasOne(of => of.Grade)
@@ -109,6 +122,5 @@ namespace Financial_management_backend.Data
                 .HasForeignKey(ir => ir.StudentId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
-
     }
 }
