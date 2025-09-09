@@ -16,6 +16,10 @@ namespace Financial_management_backend.Services.Dtos
         [Required(ErrorMessage = "Unit is required")]
         [StringLength(20, ErrorMessage = "Unit cannot exceed 20 characters")]
         public string Unit { get; set; }
+        
+        [Required(ErrorMessage = "Approximate value is required")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Approximate value must be greater than 0")]
+        public decimal ApproximateValue { get; set; }
     }
 
     public class UpdateRequiredItemDto
@@ -28,6 +32,9 @@ namespace Financial_management_backend.Services.Dtos
 
         [StringLength(20, ErrorMessage = "Unit cannot exceed 20 characters")]
         public string Unit { get; set; }
+        
+        [Range(0.01, double.MaxValue, ErrorMessage = "Approximate value must be greater than 0")]
+        public decimal? ApproximateValue { get; set; }
     }
 
     public class RequiredItemDto
@@ -36,5 +43,6 @@ namespace Financial_management_backend.Services.Dtos
         public string ItemName { get; set; }
         public decimal ExpectedQuantity { get; set; }
         public string Unit { get; set; }
+        public decimal ApproximateValue { get; set; }
     }
 }
