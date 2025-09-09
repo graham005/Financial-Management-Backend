@@ -18,5 +18,9 @@ namespace Financial_management_backend.Models
         [Required]
         [StringLength(20)]
         public string Unit { get; set; }
+        
+        // New property for monetary value
+        [Required]
+        public decimal ApproximateValue { get; set; }
     }
 }
