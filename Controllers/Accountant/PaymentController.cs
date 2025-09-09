@@ -124,7 +124,6 @@ namespace Financial_management_backend.Controllers.Accountant
                     StudentId = paymentDto.StudentId,
                     Amount = paymentDto.Amount,
                     PaymentDate = paymentDto.PaymentDate,
-                    // REMOVED: Term = paymentTerm, 
                     PaymentMethod = paymentDto.PaymentMethod,
                     Status = "Completed",
                     CreatedBy = (Guid)userId
@@ -133,7 +132,8 @@ namespace Financial_management_backend.Controllers.Accountant
                 await _context.Payments.AddAsync(payment);
                 await _context.SaveChangesAsync();
 
-                // UPDATED: Create fee payment records with term and year information
+                // Create fee payment records with term and year information
+                List<FeePayment> feePayments = new List<FeePayment>();
                 foreach (var feeAllocation in paymentDto.FeeAllocations)
                 {
                     var feePayment = new FeePayment
@@ -148,6 +148,7 @@ namespace Financial_management_backend.Controllers.Accountant
                     };
 
                     await _context.FeePayments.AddAsync(feePayment);
+                    feePayments.Add(feePayment);
                 }
 
                 await _context.SaveChangesAsync();
@@ -169,6 +170,10 @@ namespace Financial_management_backend.Controllers.Accountant
                     CreatedAt = DateTime.UtcNow
                 };
                 await _transactionService.CreateAsync(transaction);
+
+                // Update fee obligations - pass the actual FeePayment objects
+                var feeObligationService = HttpContext.RequestServices.GetRequiredService<FeeObligationService>();
+                await feeObligationService.UpdateObligationPayments(paymentDto.StudentId, feePayments);
 
                 var response = new
                 {
