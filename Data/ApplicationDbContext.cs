@@ -1,4 +1,5 @@
 ﻿using Financial_management_backend.Models;
+using Financial_management_backend.Models.ItemManagement;
 using Microsoft.EntityFrameworkCore;
 
 namespace Financial_management_backend.Data
@@ -28,6 +29,12 @@ namespace Financial_management_backend.Data
         // New database sets for fee history and obligations
         public DbSet<FeeStructureHistory> FeeStructureHistories { get; set; }
         public DbSet<StudentFeeObligation> StudentFeeObligations { get; set; }
+
+        // Additional DbSets
+        public DbSet<RequirementList> RequirementLists { get; set; }
+        public DbSet<RequirementItem> RequirementItems { get; set; }
+        public DbSet<StudentRequirement> StudentRequirements { get; set; }
+        public DbSet<ItemTransaction> ItemTransactions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -120,6 +127,55 @@ namespace Financial_management_backend.Data
                 .HasOne(ir => ir.Student)
                 .WithMany()
                 .HasForeignKey(ir => ir.StudentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Item Ledger relationships
+            modelBuilder.Entity<RequirementList>()
+                .HasOne(rl => rl.Creator)
+                .WithMany()
+                .HasForeignKey(rl => rl.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<RequirementItem>()
+                .HasOne(ri => ri.RequirementList)
+                .WithMany(rl => rl.Items)
+                .HasForeignKey(ri => ri.RequirementListId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StudentRequirement>()
+                .HasOne(sr => sr.Student)
+                .WithMany()
+                .HasForeignKey(sr => sr.StudentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<StudentRequirement>()
+                .HasOne(sr => sr.RequirementList)
+                .WithMany()
+                .HasForeignKey(sr => sr.RequirementListId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StudentRequirement>()
+                .HasOne(sr => sr.Assigner)
+                .WithMany()
+                .HasForeignKey(sr => sr.AssignedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ItemTransaction>()
+                .HasOne(it => it.StudentRequirement)
+                .WithMany(sr => sr.Transactions)
+                .HasForeignKey(it => it.StudentRequirementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ItemTransaction>()
+                .HasOne(it => it.RequirementItem)
+                .WithMany()
+                .HasForeignKey(it => it.RequirementItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ItemTransaction>()
+                .HasOne(it => it.Recorder)
+                .WithMany()
+                .HasForeignKey(it => it.RecordedBy)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }
