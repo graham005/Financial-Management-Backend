@@ -3,6 +3,7 @@ using Financial_management_backend.Models;
 using Financial_management_backend.Services;
 using Financial_management_backend.Services.BackgroundServices;
 using Financial_management_backend.Services.Dtos;
+using Financial_management_backend.Services.ItemManagement;
 using Financial_management_backend.Services.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -94,6 +95,7 @@ builder.Services.AddScoped<IFeeValidationService, FeeValidationService>();
 builder.Services.AddScoped<IAcademicTermService, AcademicTermService>();
 builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();
 builder.Services.AddScoped<FeeObligationService>();
+builder.Services.AddScoped<IItemTransactionService, ItemTransactionService>();
 
 var app = builder.Build();
 
