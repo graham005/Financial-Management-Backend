@@ -392,8 +392,8 @@ namespace Financial_management_backend.Controllers
                     sr.StudentId,
                     StudentName = sr.Student.Name,
                     sr.RequirementListId,
-                    Term = sr.RequirementList.Term,
-                    AcademicYear = sr.RequirementList.AcademicYear,
+                    sr.RequirementList.Term,
+                    sr.RequirementList.AcademicYear,
                     sr.Status,
                     sr.AssignedAt
                 });
@@ -431,24 +431,31 @@ namespace Financial_management_backend.Controllers
                         .Where(t => t.RequirementItemId == item.Id && t.TransactionType == "Item")
                         .Sum(t => t.ItemQuantity ?? 0);
 
-                    // Calculate money allocations for this item
-                    var moneyTransactions = studentRequirement.Transactions
-                        .Where(t => t.TransactionType == "Money")
+                    // Calculate money allocations for this specific item
+                    var itemSpecificMoney = studentRequirement.Transactions
+                        .Where(t => t.TransactionType == "Money" && t.RequirementItemId == item.Id)
                         .Sum(t => t.MoneyAmount ?? 0);
 
-                    // Distribute money across items (simplified approach)
-                    decimal moneyAllocation = 0;
-                    if (moneyTransactions > 0)
+                    // Calculate general money allocations
+                    var generalMoney = studentRequirement.Transactions
+                        .Where(t => t.TransactionType == "Money" && t.RequirementItemId == null)
+                        .Sum(t => t.MoneyAmount ?? 0);
+
+                    // Convert money to quantity equivalent
+                    decimal itemSpecificMoneyAllocation = itemSpecificMoney / item.UnitPrice;
+                    
+                    decimal generalMoneyAllocation = 0;
+                    if (generalMoney > 0)
                     {
                         // Get total value of all items in this requirement
                         var totalValue = studentRequirement.RequirementList.Items.Sum(i => i.RequiredQuantity * i.UnitPrice);
 
                         // Calculate proportion of money that should go to this item
                         var itemProportion = (item.RequiredQuantity * item.UnitPrice) / totalValue;
-                        moneyAllocation = moneyTransactions * itemProportion / item.UnitPrice;
+                        generalMoneyAllocation = generalMoney * itemProportion / item.UnitPrice;
                     }
 
-                    var totalReceived = itemTransactions + moneyAllocation;
+                    var totalReceived = itemTransactions + itemSpecificMoneyAllocation + generalMoneyAllocation;
                     var outstanding = Math.Max(0, item.RequiredQuantity - totalReceived);
 
                     itemStatus.Add(new RequirementStatusDto
@@ -614,7 +621,7 @@ namespace Financial_management_backend.Controllers
         // ----------- Transactions Methods -----------
 
         [HttpPost("transactions")]
-        [Authorize(Roles = "Accountant,StockManager")]
+        [Authorize(Roles = "Admin,Accountant,StockManager")]
         public async Task<IActionResult> RecordTransaction([FromBody] RecordTransactionDto dto)
         {
             try
@@ -663,11 +670,23 @@ namespace Financial_management_backend.Controllers
                         if (!item.MoneyAmount.HasValue || item.MoneyAmount <= 0)
                             return BadRequest("Money amount must be greater than zero.");
 
+                        // Validate RequirementItemId for money transactions if provided
+                        if (item.RequirementItemId.HasValue)
+                        {
+                            var requirementItem = await _context.RequirementItems
+                                .FirstOrDefaultAsync(ri => ri.Id == item.RequirementItemId &&
+                                                           ri.RequirementListId == studentRequirement.RequirementListId);
+
+                            if (requirementItem == null)
+                                return BadRequest($"Invalid requirement item ID {item.RequirementItemId} for money transaction.");
+                        }
+
                         var transaction = new ItemTransaction
                         {
                             StudentRequirementId = dto.StudentRequirementId,
                             TransactionDate = dto.TransactionDate,
                             TransactionType = "Money",
+                            RequirementItemId = item.RequirementItemId, // Now supporting RequirementItemId for money transactions
                             MoneyAmount = item.MoneyAmount,
                             Notes = item.Notes,
                             RecordedBy = (Guid)userId
@@ -701,9 +720,9 @@ namespace Financial_management_backend.Controllers
                     {
                         Id = t.Id,
                         TransactionType = t.TransactionType,
-                        ItemName = t.RequirementItem.ItemName,
+                        ItemName = t.RequirementItem?.ItemName, // Handle null case
                         Quantity = t.ItemQuantity,
-                        Unit = t.RequirementItem.Unit,
+                        Unit = t.RequirementItem?.Unit, // Handle null case
                         MoneyAmount = t.MoneyAmount,
                         Notes = t.Notes
                     }).ToList(),
@@ -759,24 +778,32 @@ namespace Financial_management_backend.Controllers
                     .Where(t => t.RequirementItemId == item.Id && t.TransactionType == "Item")
                     .Sum(t => t.ItemQuantity ?? 0);
 
-                // Calculate total money contributions
-                var moneyTotal = allTransactions
-                    .Where(t => t.TransactionType == "Money")
+                // Calculate money contributions specifically for this item
+                var itemSpecificMoney = allTransactions
+                    .Where(t => t.TransactionType == "Money" && t.RequirementItemId == item.Id)
                     .Sum(t => t.MoneyAmount ?? 0);
 
-                // Distribute money across items
-                decimal moneyAllocation = 0;
-                if (moneyTotal > 0)
+                // Calculate general money contributions (not linked to specific items)
+                var generalMoney = allTransactions
+                    .Where(t => t.TransactionType == "Money" && t.RequirementItemId == null)
+                    .Sum(t => t.MoneyAmount ?? 0);
+
+                // Convert item-specific money to quantity equivalent
+                decimal itemSpecificMoneyAllocation = itemSpecificMoney / item.UnitPrice;
+
+                // Distribute general money across items
+                decimal generalMoneyAllocation = 0;
+                if (generalMoney > 0)
                 {
                     // Get total value of all items in this requirement
                     var totalValue = studentRequirement.RequirementList.Items.Sum(i => i.RequiredQuantity * i.UnitPrice);
 
                     // Calculate proportion of money that should go to this item
                     var itemProportion = (item.RequiredQuantity * item.UnitPrice) / totalValue;
-                    moneyAllocation = moneyTotal * itemProportion / item.UnitPrice;
+                    generalMoneyAllocation = generalMoney * itemProportion / item.UnitPrice;
                 }
 
-                var totalReceived = itemTransactions + moneyAllocation;
+                var totalReceived = itemTransactions + itemSpecificMoneyAllocation + generalMoneyAllocation;
                 var isFulfilled = totalReceived >= item.RequiredQuantity;
 
                 if (!isFulfilled)
