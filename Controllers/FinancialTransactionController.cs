@@ -58,5 +58,43 @@ namespace Financial_management_backend.Controllers
             await _transactionService.DeleteAsync(id);
             return Ok("Transaction deleted.");
         }
+
+        [HttpGet("{id}/receipt-data")]
+        public async Task<IActionResult> GetReceiptData(Guid id)
+        {
+            try
+            {
+                var receiptData = await _transactionService.GetReceiptDataAsync(id);
+                if (receiptData == null)
+                    return NotFound("Transaction not found or receipt data unavailable.");
+
+                return Ok(receiptData);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "An error occurred while generating receipt data.");
+            }
+        }
+
+        [HttpGet("{id}/thermal-receipt")]
+        public async Task<IActionResult> GetThermalReceiptData(Guid id)
+        {
+            try
+            {
+                var thermalReceipt = await _transactionService.GetThermalReceiptDataAsync(id);
+                if (thermalReceipt == null)
+                    return NotFound("Transaction not found or receipt data unavailable.");
+
+                return Ok(thermalReceipt);
+            }
+            catch (Exception )
+            {
+                return StatusCode(500, "An error occurred while generating thermal receipt data.");
+            }
+        }
     }
 }
