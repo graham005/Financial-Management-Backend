@@ -38,7 +38,7 @@ namespace Financial_management_backend.Services.Dtos
     public class ThermalCustomerInfo
     {
         public string Name { get; set; }
-        public string StudentNumber { get; set; }
+        public string AdmissionNumber { get; set; }
         public string Grade { get; set; }
         public string ParentName { get; set; }
         public string Contact { get; set; }

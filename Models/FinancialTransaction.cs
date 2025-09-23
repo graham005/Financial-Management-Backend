@@ -1,3 +1,4 @@
+using Financial_management_backend.Models.ItemManagement;
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -38,6 +39,11 @@ namespace Financial_management_backend.Models
         public Guid? ExpenseId { get; set; }
         [ForeignKey("ExpenseId")]
         public Expense Expense { get; set; }
+
+        // Optional: Link to ItemTransaction if this transaction is related to an item
+        public Guid? ItemTransactionId { get; set; }
+        [ForeignKey("ItemTransactionId")]
+        public ItemTransaction ItemTransaction { get; set; }
 
         // Status (e.g., Pending, Completed, Cancelled)
         [StringLength(30)]
