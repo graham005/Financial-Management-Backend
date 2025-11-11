@@ -20,6 +20,21 @@
         public string? Description { get; set; }
     }
 
+    // Response DTO that includes both Payment and Transaction
+    public class PaymentResponseDto
+    {
+        public Guid PaymentId { get; set; }
+        public Guid TransactionId { get; set; }
+        public Guid StudentId { get; set; }
+        public string StudentName { get; set; }
+        public decimal Amount { get; set; }
+        public DateTime PaymentDate { get; set; }
+        public string PaymentMethod { get; set; }
+        public string Status { get; set; }
+        public List<FeeAllocationDto> FeeAllocations { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
     // New DTO for getting available fees to pay
     public class AvailableFeesDto
     {
