@@ -9,6 +9,8 @@ namespace Financial_management_backend.Services
         (string term, int year) GetNextAcademicTerm();
         bool IsValidTerm(string term);
         int CompareTerms(string term1, string term2);
+        bool IsYearCompleted(int academicYear);
+        bool ShouldPromoteStudents();
     }
 
     public class AcademicTermService : IAcademicTermService
@@ -62,6 +64,22 @@ namespace Financial_management_backend.Services
                 throw new ArgumentException("Invalid term names");
                 
             return termOrder[term1].CompareTo(termOrder[term2]);
+        }
+        public bool IsYearCompleted(int academicYear)
+        {
+            var (currentTerm, currentYear) = GetCurrentAcademicTerm();
+
+            // Year is completed if we're in a new year, or if we're in Term 1 of the next year
+            return currentYear > academicYear ||
+                   (currentYear == academicYear + 1 && currentTerm == "Term 1");
+        }
+
+        public bool ShouldPromoteStudents()
+        {
+            var (currentTerm, currentYear) = GetCurrentAcademicTerm();
+
+            // Typically promote students at the beginning of a new academic year (Term 1)
+            return currentTerm == "Term 1" && DateTime.Now.Month == 1; // January
         }
     }
 }

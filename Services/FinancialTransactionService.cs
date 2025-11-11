@@ -15,6 +15,10 @@ namespace Financial_management_backend.Services
         Task DeleteAsync(Guid id);
         Task<ReceiptDataDto> GetReceiptDataAsync(Guid transactionId);
         Task<ThermalReceiptDto> GetThermalReceiptDataAsync(Guid transactionId);
+        
+        // New methods for payment-based receipt generation
+        Task<ReceiptDataDto> GetReceiptDataByPaymentIdAsync(Guid paymentId);
+        Task<ThermalReceiptDto> GetThermalReceiptDataByPaymentIdAsync(Guid paymentId);
     }
 
     public class FinancialTransactionService : IFinancialTransactionService
@@ -89,6 +93,9 @@ namespace Financial_management_backend.Services
                     .ThenInclude(p => p.Student)
                         .ThenInclude(s => s.Grade)
                 .Include(t => t.Payment)
+                    .ThenInclude(p => p.Student)
+                        .ThenInclude(s => s.Parent)  // ADD THIS LINE
+                .Include(t => t.Payment)
                     .ThenInclude(p => p.FeePayments)
                 .Include(t => t.Expense)
                     .ThenInclude(e => e.Category)
@@ -98,6 +105,10 @@ namespace Financial_management_backend.Services
                     .ThenInclude(it => it.StudentRequirement)
                         .ThenInclude(sr => sr.Student)
                             .ThenInclude(s => s.Grade)
+                .Include(t => t.ItemTransaction)
+                    .ThenInclude(it => it.StudentRequirement)
+                        .ThenInclude(sr => sr.Student)
+                            .ThenInclude(s => s.Parent)  // ADD THIS LINE
                 .FirstOrDefaultAsync(t => t.Id == transactionId);
 
             if (transaction == null)
@@ -144,6 +155,9 @@ namespace Financial_management_backend.Services
                     .ThenInclude(p => p.Student)
                         .ThenInclude(s => s.Grade)
                 .Include(t => t.Payment)
+                    .ThenInclude(p => p.Student)
+                        .ThenInclude(s => s.Parent)  // ADD THIS LINE
+                .Include(t => t.Payment)
                     .ThenInclude(p => p.FeePayments)
                 .Include(t => t.Expense)
                     .ThenInclude(e => e.Category)
@@ -153,6 +167,10 @@ namespace Financial_management_backend.Services
                     .ThenInclude(it => it.StudentRequirement)
                         .ThenInclude(sr => sr.Student)
                             .ThenInclude(s => s.Grade)
+                .Include(t => t.ItemTransaction)
+                    .ThenInclude(it => it.StudentRequirement)
+                        .ThenInclude(sr => sr.Student)
+                            .ThenInclude(s => s.Parent)  // ADD THIS LINE
                 .FirstOrDefaultAsync(t => t.Id == transactionId);
 
             if (transaction == null)
@@ -762,6 +780,38 @@ namespace Financial_management_backend.Services
             // Implement your term logic
             var month = DateTime.Now.Month;
             return month <= 4 ? "Term 1" : month <= 8 ? "Term 2" : "Term 3";
+        }
+
+        public async Task<ReceiptDataDto> GetReceiptDataByPaymentIdAsync(Guid paymentId)
+        {
+            var transaction = await _context.FinancialTransactions
+                .Include(t => t.Payment)
+                    .ThenInclude(p => p.Student)
+                        .ThenInclude(s => s.Grade)
+                .Include(t => t.Payment)
+                    .ThenInclude(p => p.FeePayments)
+                .FirstOrDefaultAsync(t => t.PaymentId == paymentId);
+
+            if (transaction == null)
+                throw new InvalidOperationException("Transaction not found for this payment.");
+
+            return await GetReceiptDataAsync(transaction.Id);
+        }
+
+        public async Task<ThermalReceiptDto> GetThermalReceiptDataByPaymentIdAsync(Guid paymentId)
+        {
+            var transaction = await _context.FinancialTransactions
+                .Include(t => t.Payment)
+                    .ThenInclude(p => p.Student)
+                        .ThenInclude(s => s.Grade)
+                .Include(t => t.Payment)
+                    .ThenInclude(p => p.FeePayments)
+                .FirstOrDefaultAsync(t => t.PaymentId == paymentId);
+
+            if (transaction == null)
+                throw new InvalidOperationException("Transaction not found for this payment.");
+
+            return await GetThermalReceiptDataAsync(transaction.Id);
         }
     }
 }
