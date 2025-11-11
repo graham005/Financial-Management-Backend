@@ -90,7 +90,7 @@ namespace Financial_management_backend.Controllers.Accountant
             }
         }
 
-        // UPDATE: Record payment method to store term/year in FeePayment
+        // UPDATE: Record payment method to store term/year in FeePayment and return transaction ID
         [HttpPost]
         public async Task<IActionResult> RecordPayment([FromBody] PaymentDto paymentDto)
         {
@@ -169,7 +169,7 @@ namespace Financial_management_backend.Controllers.Accountant
                     Status = "Completed",
                     CreatedAt = DateTime.UtcNow
                 };
-                await _transactionService.CreateAsync(transaction);
+                var createdTransaction = await _transactionService.CreateAsync(transaction);
 
                 // Update fee obligations - pass the actual FeePayment objects
                 var feeObligationService = HttpContext.RequestServices.GetRequiredService<FeeObligationService>();
@@ -178,6 +178,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 var response = new
                 {
                     PaymentId = payment.Id,
+                    TransactionId = createdTransaction.Id,
                     Message = "Payment recorded successfully",
                     Warning = !string.IsNullOrEmpty(warningMessage) ? warningMessage : null,
                     FeeAllocations = paymentDto.FeeAllocations.Select(fa => new
@@ -354,6 +355,10 @@ namespace Financial_management_backend.Controllers.Accountant
 
             if (payment == null) return NotFound("Payment not found.");
 
+            // Get the associated transaction
+            var transaction = await _context.FinancialTransactions
+                .FirstOrDefaultAsync(t => t.PaymentId == id);
+
             var termAllocations = payment.FeePayments
                 .GroupBy(fp => new { fp.Term, fp.Year })
                 .Select(g => new {
@@ -366,10 +371,10 @@ namespace Financial_management_backend.Controllers.Accountant
             return Ok(new
             {
                 payment.Id,
+                TransactionId = transaction?.Id,
                 StudentName = payment.Student.Name,
                 payment.Amount,
                 payment.PaymentDate,
-                // REMOVED: payment.Term,
                 payment.PaymentMethod,
                 payment.Status,
                 TermAllocations = termAllocations
@@ -401,9 +406,16 @@ namespace Financial_management_backend.Controllers.Accountant
 
             var payments = await query.ToListAsync();
 
+            // Get all payment IDs to fetch transactions in one query
+            var paymentIds = payments.Select(p => p.Id).ToList();
+            var transactions = await _context.FinancialTransactions
+                .Where(t => t.PaymentId.HasValue && paymentIds.Contains(t.PaymentId.Value))
+                .ToDictionaryAsync(t => t.PaymentId.Value, t => t.Id);
+
             return Ok(payments.Select(p => new
             {
                 p.Id,
+                TransactionId = transactions.ContainsKey(p.Id) ? transactions[p.Id] : (Guid?)null,
                 StudentName = p.Student.Name,
                 p.Amount,
                 p.PaymentDate,
