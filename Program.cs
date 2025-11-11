@@ -93,9 +93,13 @@ builder.Services.AddScoped<FeeService>();
 builder.Services.AddScoped<IFinancialTransactionService, FinancialTransactionService>();
 builder.Services.AddScoped<IFeeValidationService, FeeValidationService>();
 builder.Services.AddScoped<IAcademicTermService, AcademicTermService>();
-builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();
-builder.Services.AddScoped<FeeObligationService>();
+builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();        
+builder.Services.AddScoped<FeeObligationService>();                           
 builder.Services.AddScoped<IItemTransactionService, ItemTransactionService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+builder.Services.AddScoped<IGradePromotionService, GradePromotionService>();
+
 
 var app = builder.Build();
 
@@ -114,6 +118,9 @@ using (var scope = app.Services.CreateScope())
         dbContext.Users.Add(adminUser);
         dbContext.SaveChanges();
     }
+
+    await GradeSeeder.UpdateGradeLevels(dbContext);
+
 }
 
 // Configure the HTTP request pipeline.
