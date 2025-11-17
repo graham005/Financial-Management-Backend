@@ -6,105 +6,74 @@ namespace Financial_management_backend.Services
     public class FeeService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IStudentGradeHistoryService _gradeHistoryService;
+        private readonly IHistoricalFeeStructureService _historicalFeeService;
 
-        public FeeService(ApplicationDbContext context)
+        public FeeService(
+            ApplicationDbContext context,
+            IStudentGradeHistoryService gradeHistoryService,
+            IHistoricalFeeStructureService historicalFeeService)
         {
             _context = context;
+            _gradeHistoryService = gradeHistoryService;
+            _historicalFeeService = historicalFeeService;
         }
 
+        /// <summary>
+        /// Calculates outstanding fees for a student in a specific term/year.
+        /// Uses historical grade and fee structure data.
+        /// </summary>
         public async Task<decimal> CalculateOutstandingFees(Guid studentId, string term, int year)
         {
             var student = await _context.Students.FindAsync(studentId);
             if (student == null) return 0;
 
-            // First check for fee obligations - these represent what the student was actually charged
+            // CRITICAL FIX: Get the grade the student was ACTUALLY in during this term/year
+            Guid historicalGradeId;
+            try
+            {
+                historicalGradeId = await _gradeHistoryService.GetStudentGradeForTermAsync(studentId, term, year);
+            }
+            catch
+            {
+                // If student wasn't enrolled yet, return 0
+                return 0;
+            }
+
+            // First check for fee obligations (if they exist)
             var obligations = await _context.StudentFeeObligations
                 .Where(o => o.StudentId == studentId && o.Term == term && o.Year == year)
                 .ToListAsync();
-                
+
             if (obligations.Any())
             {
-                // Sum up all outstanding amounts from obligations
                 return obligations.Sum(o => o.OutstandingAmount);
             }
-            
-            // If no obligations found, this might be a current term that hasn't been processed yet
-            // Fall back to calculating from current fee structure (with a note that this should be rare)
-            
-            // First check if there's a custom fee for this student/term/year
+
+            // Check for custom fee
             var customFee = await _context.CustomFees
                 .FirstOrDefaultAsync(cf => cf.StudentId == studentId && cf.Term == term && cf.Year == year);
 
-            decimal requiredFee = 0;
-
             if (customFee != null)
             {
-                // Use custom fee amount
-                requiredFee = customFee.Amount;
-                
-                var paidAmountCustom = await _context.FeePayments
-                    .Where(fp => fp.FeeId == customFee.Id && 
-                               fp.FeeType == "Custom Tuition" &&
-                               fp.Term == term &&
-                               fp.Year == year &&
-                               fp.Payment.Status == "Completed")
-                    .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
-
-                return Math.Max(requiredFee - paidAmountCustom, 0);
+                var paidAmountCustom = await GetPaidAmountForCustomFee(customFee.Id, studentId, term, year);
+                return Math.Max(customFee.Amount - paidAmountCustom, 0);
             }
-            else
-            {
-                // Use regular fee structure (try to find historical one first)
-                var feeStructureHistory = await _context.FeeStructureHistories
-                    .Where(fsh => fsh.GradeId == student.GradeId && 
-                                  fsh.AcademicYear <= year)
-                    .OrderByDescending(fsh => fsh.AcademicYear)
-                    .ThenByDescending(fsh => fsh.EffectiveFrom)
-                    .FirstOrDefaultAsync();
-                
-                if (feeStructureHistory != null)
-                {
-                    // Get the required fee for this term from historical record
-                    requiredFee = term switch
-                    {
-                        "Term 1" => feeStructureHistory.Term1Fee,
-                        "Term 2" => feeStructureHistory.Term2Fee,
-                        "Term 3" => feeStructureHistory.Term3Fee,
-                        _ => 0
-                    };
-                }
-                else
-                {
-                    // Fall back to current fee structure if no historical record
-                    var feeStructure = await _context.FeeStructures
-                        .FirstOrDefaultAsync(fs => fs.GradeId == student.GradeId);
 
-                    if (feeStructure == null) return 0;
+            // CRITICAL FIX: Get historical fee structure for the correct grade and year
+            var termFee = await _historicalFeeService.GetTermFeeForGradeAndYearAsync(historicalGradeId, term, year);
 
-                    // Get the required fee for this term
-                    requiredFee = term switch
-                    {
-                        "Term 1" => feeStructure.Term1Fee,
-                        "Term 2" => feeStructure.Term2Fee,
-                        "Term 3" => feeStructure.Term3Fee,
-                        _ => 0
-                    };
-                }
+            if (termFee == 0) return 0;
 
-                if (requiredFee == 0) return 0;
+            var paidAmountRegular = await GetPaidAmountForTuition(studentId, term, year);
 
-                var paidAmountRegular = await _context.FeePayments
-                    .Where(fp => fp.FeeType == "Tuition" &&
-                               fp.Payment.StudentId == studentId &&
-                               fp.Term == term &&
-                               fp.Year == year &&
-                               fp.Payment.Status == "Completed")
-                    .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
-
-                return Math.Max(requiredFee - paidAmountRegular, 0);
-            }
+            return Math.Max(termFee - paidAmountRegular, 0);
         }
 
+        /// <summary>
+        /// Calculates cumulative arrears from enrollment to specified term (exclusive).
+        /// Uses historical grades and fee structures.
+        /// </summary>
         public async Task<decimal> CalculateCumulativeArrears(Guid studentId, string upToTerm, int upToYear)
         {
             var student = await _context.Students.FindAsync(studentId);
@@ -113,37 +82,64 @@ namespace Financial_management_backend.Services
             var termsInOrder = new[] { "Term 1", "Term 2", "Term 3" };
             decimal cumulativeArrears = 0;
 
-            // Calculate arrears from enrollment year up to (but not including) the specified term/year
             for (int year = student.EnrollmentYear; year <= upToYear; year++)
             {
                 foreach (var term in termsInOrder)
                 {
                     // Skip terms before student enrollment
-                    if (year == student.EnrollmentYear && 
-                        Array.IndexOf(termsInOrder, term) < Array.IndexOf(termsInOrder, student.EnrollmentTerm))
+                    if (year == student.EnrollmentYear &&
+                        CompareTerms(term, student.EnrollmentTerm) < 0)
                     {
                         continue;
                     }
 
-                    // Stop when we reach the specified term in the specified year (don't include current term)
+                    // Stop when we reach the specified term (don't include current term)
                     if (year == upToYear && term == upToTerm)
                     {
                         break;
                     }
 
-                    // If we're past the specified year, stop
                     if (year > upToYear)
                     {
                         break;
                     }
 
-                    // Calculate outstanding fees for this term using the same logic as CalculateOutstandingFees
+                    // This now uses historical grades and fees automatically
                     var outstandingForTerm = await CalculateOutstandingFees(studentId, term, year);
                     cumulativeArrears += outstandingForTerm;
                 }
             }
 
             return cumulativeArrears;
+        }
+
+        private async Task<decimal> GetPaidAmountForCustomFee(Guid customFeeId, Guid studentId, string term, int year)
+        {
+            return await _context.FeePayments
+                .Where(fp => fp.FeeId == customFeeId &&
+                           fp.FeeType == "Custom Tuition" &&
+                           fp.Payment.StudentId == studentId &&
+                           fp.Term == term &&
+                           fp.Year == year &&
+                           fp.Payment.Status == "Completed")
+                .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
+        }
+
+        private async Task<decimal> GetPaidAmountForTuition(Guid studentId, string term, int year)
+        {
+            return await _context.FeePayments
+                .Where(fp => fp.FeeType == "Tuition" &&
+                           fp.Payment.StudentId == studentId &&
+                           fp.Term == term &&
+                           fp.Year == year &&
+                           fp.Payment.Status == "Completed")
+                .SumAsync(fp => (decimal?)fp.Amount) ?? 0;
+        }
+
+        private int CompareTerms(string term1, string term2)
+        {
+            var terms = new[] { "Term 1", "Term 2", "Term 3" };
+            return Array.IndexOf(terms, term1) - Array.IndexOf(terms, term2);
         }
     }
 }
