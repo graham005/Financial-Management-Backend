@@ -1,6 +1,7 @@
 ﻿using Financial_management_backend.Data;
 using Financial_management_backend.Models;
 using Financial_management_backend.Services.Dtos;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,7 @@ namespace Financial_management_backend.Controllers.Admin
 {
     [Route("api/admin/[controller]")]
     [ApiController]
+    [Authorize]
     public class StudentController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
