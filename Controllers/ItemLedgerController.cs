@@ -1,4 +1,5 @@
 using Financial_management_backend.Data;
+using Financial_management_backend.Models;
 using Financial_management_backend.Models.ItemManagement;
 using Financial_management_backend.Services;
 using Financial_management_backend.Services.Dtos.ItemManagement;
@@ -12,18 +13,12 @@ namespace Financial_management_backend.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
-    public class ItemLedgerController : ControllerBase
+    public class ItemLedgerController(
+        ApplicationDbContext context,
+        IAcademicTermService academicTermService) : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IAcademicTermService _academicTermService;
-
-        public ItemLedgerController(
-            ApplicationDbContext context,
-            IAcademicTermService academicTermService)
-        {
-            _context = context;
-            _academicTermService = academicTermService;
-        }
+        private readonly ApplicationDbContext _context = context;
+        private readonly IAcademicTermService _academicTermService = academicTermService;
 
         // ----------- Requirement Lists Methods -----------
 
@@ -80,7 +75,7 @@ namespace Financial_management_backend.Controllers
                     CreatedAt = list.CreatedAt,
                     CreatedBy = list.Creator.Username,
                     Status = list.Status,
-                    Items = list.Items.Select(item => new RequirementItemDto
+                    Items = [.. list.Items.Select(item => new RequirementItemDto
                     {
                         Id = item.Id,
                         ItemName = item.ItemName,
@@ -88,7 +83,7 @@ namespace Financial_management_backend.Controllers
                         Unit = item.Unit,
                         UnitPrice = item.UnitPrice,
                         Description = item.Description
-                    }).ToList()
+                    })]
                 };
 
                 return Ok(result);
@@ -643,93 +638,113 @@ namespace Financial_management_backend.Controllers
                 if (studentRequirement == null)
                     return NotFound("Student requirement not found.");
 
-                // Process each transaction item
-                var transactionItems = new List<ItemTransaction>();
-                foreach (var item in dto.Items)
+                // Use a database transaction to ensure atomicity
+                using var dbTransaction = await _context.Database.BeginTransactionAsync();
+
+                try
                 {
-                    if (item.TransactionType == "Item")
+                    // Process each transaction item
+                    var transactionItems = new List<ItemTransaction>();
+                    foreach (var item in dto.Items)
                     {
-                        if (!await ValidateItemTransaction(item, studentRequirement))
-                            return BadRequest($"Invalid item transaction for item ID {item.RequirementItemId}");
-
-                        var transaction = new ItemTransaction
+                        if (item.TransactionType == "Item")
                         {
-                            StudentRequirementId = dto.StudentRequirementId,
-                            TransactionDate = dto.TransactionDate,
-                            TransactionType = "Item",
-                            RequirementItemId = item.RequirementItemId,
-                            ItemQuantity = item.ItemQuantity,
-                            Notes = item.Notes,
-                            RecordedBy = (Guid)userId
-                        };
+                            if (!await ValidateItemTransaction(item, studentRequirement))
+                                return BadRequest($"Invalid item transaction for item ID {item.RequirementItemId}");
 
-                        transactionItems.Add(transaction);
-                    }
-                    else if (item.TransactionType == "Money")
-                    {
-                        if (!item.MoneyAmount.HasValue || item.MoneyAmount <= 0)
-                            return BadRequest("Money amount must be greater than zero.");
+                            var transaction = new ItemTransaction
+                            {
+                                StudentRequirementId = dto.StudentRequirementId,
+                                TransactionDate = dto.TransactionDate,
+                                TransactionType = "Item",
+                                RequirementItemId = item.RequirementItemId,
+                                ItemQuantity = item.ItemQuantity,
+                                Notes = item.Notes,
+                                RecordedBy = (Guid)userId
+                            };
 
-                        // Validate RequirementItemId for money transactions if provided
-                        if (item.RequirementItemId.HasValue)
-                        {
-                            var requirementItem = await _context.RequirementItems
-                                .FirstOrDefaultAsync(ri => ri.Id == item.RequirementItemId &&
-                                                           ri.RequirementListId == studentRequirement.RequirementListId);
-
-                            if (requirementItem == null)
-                                return BadRequest($"Invalid requirement item ID {item.RequirementItemId} for money transaction.");
+                            transactionItems.Add(transaction);
                         }
-
-                        var transaction = new ItemTransaction
+                        else if (item.TransactionType == "Money")
                         {
-                            StudentRequirementId = dto.StudentRequirementId,
-                            TransactionDate = dto.TransactionDate,
-                            TransactionType = "Money",
-                            RequirementItemId = item.RequirementItemId, // Now supporting RequirementItemId for money transactions
-                            MoneyAmount = item.MoneyAmount,
-                            Notes = item.Notes,
-                            RecordedBy = (Guid)userId
-                        };
+                            if (!item.MoneyAmount.HasValue || item.MoneyAmount <= 0)
+                                return BadRequest("Money amount must be greater than zero.");
 
-                        transactionItems.Add(transaction);
+                            // Validate RequirementItemId for money transactions if provided
+                            if (item.RequirementItemId.HasValue)
+                            {
+                                var requirementItem = await _context.RequirementItems
+                                    .FirstOrDefaultAsync(ri => ri.Id == item.RequirementItemId &&
+                                                               ri.RequirementListId == studentRequirement.RequirementListId);
+
+                                if (requirementItem == null)
+                                    return BadRequest($"Invalid requirement item ID {item.RequirementItemId} for money transaction.");
+                            }
+
+                            var transaction = new ItemTransaction
+                            {
+                                StudentRequirementId = dto.StudentRequirementId,
+                                TransactionDate = dto.TransactionDate,
+                                TransactionType = "Money",
+                                RequirementItemId = item.RequirementItemId,
+                                MoneyAmount = item.MoneyAmount,
+                                Notes = item.Notes,
+                                RecordedBy = (Guid)userId
+                            };
+
+                            transactionItems.Add(transaction);
+                        }
+                        else
+                        {
+                            return BadRequest($"Invalid transaction type: {item.TransactionType}. Must be 'Item' or 'Money'.");
+                        }
                     }
-                    else
+
+                    // Save ItemTransactions first to get their IDs
+                    await _context.ItemTransactions.AddRangeAsync(transactionItems);
+                    await _context.SaveChangesAsync();
+
+                    // Create FinancialTransactions for each ItemTransaction
+                    foreach (var itemTransaction in transactionItems)
                     {
-                        return BadRequest($"Invalid transaction type: {item.TransactionType}. Must be 'Item' or 'Money'.");
+                        await CreateFinancialTransactionForItemAsync(itemTransaction, (Guid)userId);
                     }
+
+                    // Update student requirement status
+                    await UpdateStudentRequirementStatus(studentRequirement, transactionItems);
+
+                    await _context.SaveChangesAsync();
+                    await dbTransaction.CommitAsync();
+
+                    // Prepare response
+                    var response = new TransactionResponseDto
+                    {
+                        Id = transactionItems.First().Id,
+                        StudentRequirementId = dto.StudentRequirementId,
+                        StudentName = studentRequirement.Student.Name,
+                        Term = studentRequirement.RequirementList.Term,
+                        AcademicYear = studentRequirement.RequirementList.AcademicYear,
+                        TransactionDate = dto.TransactionDate,
+                        Items = [.. transactionItems.Select(t => new TransactionDetailDto
+                        {
+                            Id = t.Id,
+                            TransactionType = t.TransactionType,
+                            ItemName = t.RequirementItem.ItemName,
+                            Quantity = t.ItemQuantity,
+                            Unit = t.RequirementItem.Unit,
+                            MoneyAmount = t.MoneyAmount,
+                            Notes = t.Notes
+                        })],
+                        RequirementFulfilled = studentRequirement.Status == "Complete"
+                    };
+
+                    return Ok(response);
                 }
-
-                await _context.ItemTransactions.AddRangeAsync(transactionItems);
-
-                // Update student requirement status
-                await UpdateStudentRequirementStatus(studentRequirement, transactionItems);
-
-                await _context.SaveChangesAsync();
-
-                // Prepare response
-                var response = new TransactionResponseDto
+                catch
                 {
-                    Id = transactionItems.First().Id,
-                    StudentRequirementId = dto.StudentRequirementId,
-                    StudentName = studentRequirement.Student.Name,
-                    Term = studentRequirement.RequirementList.Term,
-                    AcademicYear = studentRequirement.RequirementList.AcademicYear,
-                    TransactionDate = dto.TransactionDate,
-                    Items = transactionItems.Select(t => new TransactionDetailDto
-                    {
-                        Id = t.Id,
-                        TransactionType = t.TransactionType,
-                        ItemName = t.RequirementItem?.ItemName, // Handle null case
-                        Quantity = t.ItemQuantity,
-                        Unit = t.RequirementItem?.Unit, // Handle null case
-                        MoneyAmount = t.MoneyAmount,
-                        Notes = t.Notes
-                    }).ToList(),
-                    RequirementFulfilled = studentRequirement.Status == "Complete"
-                };
-
-                return Ok(response);
+                    await dbTransaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -854,8 +869,87 @@ namespace Financial_management_backend.Controllers
             // Recalculate status for each requirement
             foreach (var requirement in studentRequirements)
             {
-                await UpdateStudentRequirementStatus(requirement, new List<ItemTransaction>());
+                await UpdateStudentRequirementStatus(requirement, []);
             }
+        }
+
+        private async Task CreateFinancialTransactionForItemAsync(ItemTransaction itemTransaction, Guid userId)
+        {
+            // Load related data if not already loaded
+            if (itemTransaction.RequirementItem == null && itemTransaction.RequirementItemId.HasValue)
+            {
+                var requirementItem = await _context.RequirementItems
+                    .FirstOrDefaultAsync(ri => ri.Id == itemTransaction.RequirementItemId.Value);
+                if (requirementItem != null)
+                {
+                    itemTransaction.RequirementItem = requirementItem;
+                }
+            }
+
+            if (itemTransaction.StudentRequirement == null)
+            {
+                var sr = await _context.StudentRequirements
+                    .Include(sr => sr.Student)
+                    .Include(sr => sr.RequirementList)
+                    .FirstOrDefaultAsync(sr => sr.Id == itemTransaction.StudentRequirementId);
+
+                if (sr != null)
+                {
+                    itemTransaction.StudentRequirement = sr;
+                }
+            }
+
+            decimal amount = 0;
+            string description = "";
+            string category = "";
+
+            if (itemTransaction.TransactionType == "Item")
+            {
+                var unitPrice = itemTransaction.RequirementItem?.UnitPrice ?? 0;
+                var quantity = itemTransaction.ItemQuantity ?? 0;
+                amount = unitPrice * quantity;
+
+                var itemName = itemTransaction.RequirementItem?.ItemName ?? "Item";
+                var unit = itemTransaction.RequirementItem?.Unit ?? "units";
+                description = $"Item received: {itemName} ({quantity} {unit}) - {itemTransaction.StudentRequirement?.Student?.Name}";
+                category = "Item Receipt";
+            }
+            else if (itemTransaction.TransactionType == "Money")
+            {
+                amount = itemTransaction.MoneyAmount ?? 0;
+
+                if (itemTransaction.RequirementItemId.HasValue)
+                {
+                    var itemName = itemTransaction.RequirementItem?.ItemName ?? "Item";
+                    description = $"Money contribution for: {itemName} - {itemTransaction.StudentRequirement?.Student?.Name}";
+                }
+                else
+                {
+                    description = $"Money contribution for requirement items - {itemTransaction.StudentRequirement?.Student?.Name}";
+                }
+                category = "Money Contribution";
+            }
+            else
+            {
+                amount = itemTransaction.MoneyAmount ?? 0;
+                description = $"{itemTransaction.TransactionType}: {itemTransaction.Notes ?? "Transaction"}";
+                category = itemTransaction.TransactionType;
+            }
+
+            var financialTransaction = new FinancialTransaction
+            {
+                Date = itemTransaction.TransactionDate,
+                Amount = amount,
+                Type = "Item Transaction",
+                Category = category,
+                Description = description,
+                CreatedBy = userId,
+                ItemTransactionId = itemTransaction.Id,
+                Status = "Completed",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _context.FinancialTransactions.AddAsync(financialTransaction);
         }
     }
 

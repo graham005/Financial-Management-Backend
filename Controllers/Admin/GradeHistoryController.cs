@@ -7,14 +7,9 @@ namespace Financial_management_backend.Controllers.Admin
     [Route("api/admin/[controller]")]
     [ApiController]
     [Authorize(Roles = "Admin")]
-    public class GradeHistoryController : ControllerBase
+    public class GradeHistoryController(IStudentGradeHistoryService gradeHistoryService) : ControllerBase
     {
-        private readonly IStudentGradeHistoryService _gradeHistoryService;
-
-        public GradeHistoryController(IStudentGradeHistoryService gradeHistoryService)
-        {
-            _gradeHistoryService = gradeHistoryService;
-        }
+        private readonly IStudentGradeHistoryService _gradeHistoryService = gradeHistoryService;
 
         [HttpPost("backfill-all")]
         public async Task<IActionResult> BackfillAllStudents()

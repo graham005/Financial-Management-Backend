@@ -98,8 +98,6 @@ builder.Services.AddScoped<FeeObligationService>();
 builder.Services.AddScoped<IItemTransactionService, ItemTransactionService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
-builder.Services.AddScoped<IGradePromotionService, GradePromotionService>();
-
 builder.Services.AddScoped<IStudentGradeHistoryService, StudentGradeHistoryService>();
 builder.Services.AddScoped<IHistoricalFeeStructureService, HistoricalFeeStructureService>();
 

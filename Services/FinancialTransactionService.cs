@@ -21,24 +21,24 @@ namespace Financial_management_backend.Services
         Task<ThermalReceiptDto> GetThermalReceiptDataByPaymentIdAsync(Guid paymentId);
     }
 
-    public class FinancialTransactionService : IFinancialTransactionService
+    public class FinancialTransactionService(ApplicationDbContext context) : IFinancialTransactionService
     {
-        private readonly ApplicationDbContext _context;
-
-        public FinancialTransactionService(ApplicationDbContext context)
-        {
-            _context = context;
-        }
+        private readonly ApplicationDbContext _context = context;
 
         public async Task<FinancialTransaction> CreateAsync(FinancialTransaction transaction)
         {
             bool hasPayment = transaction.PaymentId.HasValue;
             bool hasExpense = transaction.ExpenseId.HasValue;
+            bool hasItemTransaction = transaction.ItemTransactionId.HasValue;
 
-            if(hasPayment == hasExpense)
+            // Count how many are set
+            int count = (hasPayment ? 1 : 0) + (hasExpense ? 1 : 0) + (hasItemTransaction ? 1 : 0);
+
+            if(count != 1)
             {
-                throw new ArgumentException("A transaction must have either a Payment or Expense, but not both or neither");
+                throw new ArgumentException("A transaction must have exactly one of: Payment, Expense, or ItemTransaction");
             }
+            
             await _context.FinancialTransactions.AddAsync(transaction);
             await _context.SaveChangesAsync();
             return transaction;
@@ -49,13 +49,7 @@ namespace Financial_management_backend.Services
             var transaction = await _context.FinancialTransactions
                 .Include(t => t.Payment)
                 .Include(t => t.Expense)
-                .FirstOrDefaultAsync(t => t.Id == id);
-
-            if (transaction == null)
-            {
-                throw new InvalidOperationException($"FinancialTransaction with id '{id}' was not found.");
-            }
-
+                .FirstOrDefaultAsync(t => t.Id == id) ?? throw new InvalidOperationException($"FinancialTransaction with id '{id}' was not found.");
             return transaction;
         }
 
@@ -94,7 +88,7 @@ namespace Financial_management_backend.Services
                         .ThenInclude(s => s.Grade)
                 .Include(t => t.Payment)
                     .ThenInclude(p => p.Student)
-                        .ThenInclude(s => s.Parent)  // ADD THIS LINE
+                        .ThenInclude(s => s.Parent)
                 .Include(t => t.Payment)
                     .ThenInclude(p => p.FeePayments)
                 .Include(t => t.Expense)
@@ -108,7 +102,7 @@ namespace Financial_management_backend.Services
                 .Include(t => t.ItemTransaction)
                     .ThenInclude(it => it.StudentRequirement)
                         .ThenInclude(sr => sr.Student)
-                            .ThenInclude(s => s.Parent)  // ADD THIS LINE
+                            .ThenInclude(s => s.Parent)
                 .FirstOrDefaultAsync(t => t.Id == transactionId);
 
             if (transaction == null)
@@ -156,7 +150,7 @@ namespace Financial_management_backend.Services
                         .ThenInclude(s => s.Grade)
                 .Include(t => t.Payment)
                     .ThenInclude(p => p.Student)
-                        .ThenInclude(s => s.Parent)  // ADD THIS LINE
+                        .ThenInclude(s => s.Parent)
                 .Include(t => t.Payment)
                     .ThenInclude(p => p.FeePayments)
                 .Include(t => t.Expense)
@@ -170,7 +164,7 @@ namespace Financial_management_backend.Services
                 .Include(t => t.ItemTransaction)
                     .ThenInclude(it => it.StudentRequirement)
                         .ThenInclude(sr => sr.Student)
-                            .ThenInclude(s => s.Parent)  // ADD THIS LINE
+                            .ThenInclude(s => s.Parent)
                 .FirstOrDefaultAsync(t => t.Id == transactionId);
 
             if (transaction == null)
@@ -289,16 +283,16 @@ namespace Financial_management_backend.Services
             {
                 ThankYouMessage = "Thank you for your payment!",
                 ContactInfo = "For inquiries: +1-234-567-8900",
-                AdditionalNotes = new List<string>
-                {
+                AdditionalNotes =
+                [
                     "Keep this receipt for your records",
                     "Valid for current academic year"
-                },
+                ],
                 Signature = "Authorized Signature: _______________"
             };
         }
 
-        private string GenerateReceiptNumber(FinancialTransaction transaction)
+        private static string GenerateReceiptNumber(FinancialTransaction transaction)
         {
             var prefix = transaction.PaymentId.HasValue ? "RCP-PAY" : "RCP-ITM";
             var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
@@ -306,7 +300,7 @@ namespace Financial_management_backend.Services
             return $"{prefix}-{timestamp}-{shortId.ToUpper()}";
         }
 
-        private OrganizationDetailsDto GetOrganizationDetails()
+        private static OrganizationDetailsDto GetOrganizationDetails()
         {
             // You can configure these values or pull from database/configuration
             return new OrganizationDetailsDto

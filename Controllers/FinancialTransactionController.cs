@@ -8,14 +8,9 @@ namespace Financial_management_backend.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
-    public class FinancialTransactionController : ControllerBase
+    public class FinancialTransactionController(IFinancialTransactionService transactionService) : ControllerBase
     {
-        private readonly IFinancialTransactionService _transactionService;
-
-        public FinancialTransactionController(IFinancialTransactionService transactionService)
-        {
-            _transactionService = transactionService;
-        }
+        private readonly IFinancialTransactionService _transactionService = transactionService;
 
         [HttpGet]
         public async Task<IActionResult> GetAll()
@@ -45,9 +40,13 @@ namespace Financial_management_backend.Controllers
         {
             bool hasPayment = transaction.PaymentId.HasValue;
             bool hasExpense = transaction.ExpenseId.HasValue;
+            bool hasItemTransaction = transaction.ItemTransactionId.HasValue;
 
-            if (hasPayment == hasExpense)
-                return BadRequest("A transaction must have either a Payment or Expense, but not both or neither");
+            int count = (hasPayment ? 1 : 0) + (hasExpense ? 1 : 0) + (hasItemTransaction ? 1 : 0);
+
+            if (count != 1)
+                return BadRequest("A transaction must have exactly one of: Payment, Expense, or ItemTransaction");
+                
             var created = await _transactionService.CreateAsync(transaction);
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
