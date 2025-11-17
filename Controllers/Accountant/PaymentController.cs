@@ -199,8 +199,23 @@ namespace Financial_management_backend.Controllers.Accountant
             }
         }
 
-        private async Task AddTuitionFees(List<AvailableFeeItemDto> availableFees, Guid studentId, string term, int year, Guid gradeId)
+        private async Task AddTuitionFees(List<AvailableFeeItemDto> availableFees, Guid studentId, string term, int year, Guid currentGradeId)
         {
+            var gradeHistoryService = HttpContext.RequestServices.GetRequiredService<IStudentGradeHistoryService>();
+            var historicalFeeService = HttpContext.RequestServices.GetRequiredService<IHistoricalFeeStructureService>();
+
+            // CRITICAL FIX: Get the grade the student was in during this term/year
+            Guid historicalGradeId;
+            try
+            {
+                historicalGradeId = await gradeHistoryService.GetStudentGradeForTermAsync(studentId, term, year);
+            }
+            catch
+            {
+                // Student wasn't enrolled during this term, skip
+                return;
+            }
+
             // Check for custom fee first
             var customFee = await _context.CustomFees
                 .FirstOrDefaultAsync(cf => cf.StudentId == studentId && cf.Term == term && cf.Year == year);
@@ -224,37 +239,28 @@ namespace Financial_management_backend.Controllers.Accountant
                 return;
             }
 
-            // Regular tuition fee
-            var feeStructure = await _context.FeeStructures
-                .FirstOrDefaultAsync(fs => fs.GradeId == gradeId);
+            // CRITICAL FIX: Get historical fee structure for the correct grade and year
+            var termFee = await historicalFeeService.GetTermFeeForGradeAndYearAsync(historicalGradeId, term, year);
 
-            if (feeStructure != null)
+            if (termFee > 0)
             {
-                var termFee = term switch
-                {
-                    "Term 1" => feeStructure.Term1Fee,
-                    "Term 2" => feeStructure.Term2Fee,
-                    "Term 3" => feeStructure.Term3Fee,
-                    _ => 0
-                };
+                var paidAmount = await GetPaidAmountForTuition(studentId, term, year);
 
-                if (termFee > 0)
+                var grade = await _context.Grades.FindAsync(historicalGradeId);
+
+                availableFees.Add(new AvailableFeeItemDto
                 {
-                    var paidAmount = await GetPaidAmountForTuition(studentId, term, year);
-                    availableFees.Add(new AvailableFeeItemDto
-                    {
-                        FeeId = feeStructure.Id,
-                        FeeType = "Tuition",
-                        FeeSource = "FeeStructure",
-                        Term = term,
-                        Year = year,
-                        TotalAmount = termFee,
-                        PaidAmount = paidAmount,
-                        OutstandingAmount = Math.Max(termFee - paidAmount, 0),
-                        Description = $"Tuition fee for {term} {year}",
-                        IsOverdue = IsTermOverdue(term, year)
-                    });
-                }
+                    FeeId = historicalGradeId, // Using grade ID as fee structure might not have persistent ID
+                    FeeType = "Tuition",
+                    FeeSource = "FeeStructure",
+                    Term = term,
+                    Year = year,
+                    TotalAmount = termFee,
+                    PaidAmount = paidAmount,
+                    OutstandingAmount = Math.Max(termFee - paidAmount, 0),
+                    Description = $"Tuition fee for {grade?.Name ?? "Unknown Grade"} - {term} {year}",
+                    IsOverdue = IsTermOverdue(term, year)
+                });
             }
         }
 
