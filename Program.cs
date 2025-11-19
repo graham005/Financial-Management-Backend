@@ -100,6 +100,7 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 builder.Services.AddScoped<IStudentGradeHistoryService, StudentGradeHistoryService>();
 builder.Services.AddScoped<IHistoricalFeeStructureService, HistoricalFeeStructureService>();
+builder.Services.AddScoped<IStudentPromotionService, StudentPromotionService>();
 
 var app = builder.Build();
 
