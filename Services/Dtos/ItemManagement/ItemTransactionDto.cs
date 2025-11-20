@@ -37,5 +37,25 @@ namespace Financial_management_backend.Services.Dtos.ItemManagement
         public string Unit { get; set; }
         public decimal? MoneyAmount { get; set; }
         public string Notes { get; set; }
+        public Guid? FinancialTransactionId { get; set; }
+    }
+
+    public class ItemTransactionDetailsDto
+    {
+        public Guid Id { get; set; }
+        public Guid StudentRequirementId { get; set; }
+        public string StudentName { get; set; }
+        public string AdmissionNumber { get; set; }
+        public string Grade { get; set; }
+        public DateTime TransactionDate { get; set; }
+        public string TransactionType { get; set; }
+        public string ItemName { get; set; }
+        public decimal? Quantity { get; set; }
+        public string Unit { get; set; }
+        public decimal? UnitPrice { get; set; }
+        public decimal? MoneyAmount { get; set; }
+        public string Notes { get; set; }
+        public string RecordedBy { get; set; }
+        public Guid? FinancialTransactionId { get; set; } // Added
     }
 }

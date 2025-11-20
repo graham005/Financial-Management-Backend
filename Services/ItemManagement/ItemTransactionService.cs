@@ -14,6 +14,7 @@ namespace Financial_management_backend.Services.ItemManagement
         Task<List<ItemTransaction>> GetByStudentAsync(Guid studentId);
         Task UpdateStatusOfRequirementAsync(Guid studentRequirementId);
         Task DeleteAsync(Guid id);
+        Task<Guid?> GetFinancialTransactionIdAsync(Guid itemTransactionId);
     }
 
     public class ItemTransactionService(ApplicationDbContext context) : IItemTransactionService
@@ -290,6 +291,14 @@ namespace Financial_management_backend.Services.ItemManagement
                 await dbTransaction.RollbackAsync();
                 throw;
             }
+        }
+
+        public async Task<Guid?> GetFinancialTransactionIdAsync(Guid itemTransactionId)
+        {
+            var financialTransaction = await _context.FinancialTransactions
+                .FirstOrDefaultAsync(ft => ft.ItemTransactionId == itemTransactionId);
+
+            return financialTransaction?.Id;
         }
     }
 }

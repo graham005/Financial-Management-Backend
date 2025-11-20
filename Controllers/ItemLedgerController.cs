@@ -716,7 +716,14 @@ namespace Financial_management_backend.Controllers
                     await _context.SaveChangesAsync();
                     await dbTransaction.CommitAsync();
 
-                    // Prepare response
+                    // Fetch FinancialTransactionIds for the response
+                    var itemTransactionIds = transactionItems.Select(t => t.Id).ToList();
+                    var financialTransactions = await _context.FinancialTransactions
+                        .Where(ft => ft.ItemTransactionId.HasValue && itemTransactionIds.Contains(ft.ItemTransactionId.Value))
+                        .Select(ft => new { ft.ItemTransactionId, ft.Id })
+                        .ToListAsync();
+
+                    // Prepare response with FinancialTransactionId
                     var response = new TransactionResponseDto
                     {
                         Id = transactionItems.First().Id,
@@ -733,7 +740,9 @@ namespace Financial_management_backend.Controllers
                             Quantity = t.ItemQuantity,
                             Unit = t.RequirementItem.Unit,
                             MoneyAmount = t.MoneyAmount,
-                            Notes = t.Notes
+                            Notes = t.Notes,
+                            FinancialTransactionId = financialTransactions
+                                .FirstOrDefault(ft => ft.ItemTransactionId == t.Id)?.Id
                         })],
                         RequirementFulfilled = studentRequirement.Status == "Complete"
                     };
@@ -745,6 +754,99 @@ namespace Financial_management_backend.Controllers
                     await dbTransaction.RollbackAsync();
                     throw;
                 }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
+        }
+
+        [HttpGet("transactions/{id}")]
+        [Authorize(Roles = "Admin,Accountant,StockManager")]
+        public async Task<IActionResult> GetItemTransactionById(Guid id)
+        {
+            try
+            {
+                var transaction = await _context.ItemTransactions
+                    .Include(t => t.StudentRequirement)
+                        .ThenInclude(sr => sr.Student)
+                            .ThenInclude(s => s.Grade)  // Add this line
+                    .Include(t => t.StudentRequirement)
+                        .ThenInclude(sr => sr.RequirementList)
+                    .Include(t => t.RequirementItem)
+                    .Include(t => t.Recorder)
+                    .FirstOrDefaultAsync(t => t.Id == id);
+
+                if (transaction == null)
+                    return NotFound("Item transaction not found.");
+
+                // Fetch the associated FinancialTransaction
+                var financialTransaction = await _context.FinancialTransactions
+                    .FirstOrDefaultAsync(ft => ft.ItemTransactionId == id);
+
+                var result = new ItemTransactionDetailsDto
+                {
+                    Id = transaction.Id,
+                    StudentRequirementId = transaction.StudentRequirementId,
+                    StudentName = transaction.StudentRequirement.Student.Name,
+                    AdmissionNumber = transaction.StudentRequirement.Student.AdmissionNumber,
+                    Grade = transaction.StudentRequirement.Student.Grade.Name,
+                    TransactionDate = transaction.TransactionDate,
+                    TransactionType = transaction.TransactionType,
+                    ItemName = transaction.RequirementItem.ItemName,
+                    Quantity = transaction.ItemQuantity,
+                    Unit = transaction.RequirementItem.Unit,
+                    UnitPrice = transaction.RequirementItem.UnitPrice,
+                    MoneyAmount = transaction.MoneyAmount,
+                    Notes = transaction.Notes,
+                    RecordedBy = transaction.Recorder.Username,
+                    FinancialTransactionId = financialTransaction?.Id
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
+        }
+
+        [HttpGet("student-requirements/{studentRequirementId}/transactions")]
+        [Authorize(Roles = "Admin,Accountant,StockManager")]
+        public async Task<IActionResult> GetTransactionsByStudentRequirement(Guid studentRequirementId)
+        {
+            try
+            {
+                var transactions = await _context.ItemTransactions
+                    .Include(t => t.RequirementItem)
+                    .Include(t => t.Recorder)
+                    .Where(t => t.StudentRequirementId == studentRequirementId)
+                    .OrderByDescending(t => t.TransactionDate)
+                    .ToListAsync();
+
+                // Fetch all associated FinancialTransactions
+                var itemTransactionIds = transactions.Select(t => t.Id).ToList();
+                var financialTransactions = await _context.FinancialTransactions
+                    .Where(ft => ft.ItemTransactionId.HasValue && itemTransactionIds.Contains(ft.ItemTransactionId.Value))
+                    .Select(ft => new { ft.ItemTransactionId, ft.Id })
+                    .ToListAsync();
+
+                var result = transactions.Select(t => new
+                {
+                    t.Id,
+                    t.TransactionDate,
+                    t.TransactionType,
+                    ItemName = t.RequirementItem?.ItemName,
+                    t.ItemQuantity,
+                    Unit = t.RequirementItem?.Unit,
+                    t.MoneyAmount,
+                    t.Notes,
+                    RecordedBy = t.Recorder?.Username,
+                    FinancialTransactionId = financialTransactions
+                        .FirstOrDefault(ft => ft.ItemTransactionId == t.Id)?.Id
+                });
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
