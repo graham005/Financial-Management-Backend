@@ -161,7 +161,6 @@ namespace Financial_management_backend.Services
             }
 
             var otherFees = await _context.OtherFees
-                .Where(of => of.GradeId == student.GradeId)
                 .ToListAsync();
 
             foreach (var otherFee in otherFees)

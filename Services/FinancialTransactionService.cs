@@ -281,13 +281,7 @@ namespace Financial_management_backend.Services
             // Footer
             receipt.Footer = new ThermalReceiptFooter
             {
-                ThankYouMessage = "Thank you for your payment!",
-                ContactInfo = "For inquiries: +1-234-567-8900",
-                AdditionalNotes =
-                [
-                    "Keep this receipt for your records",
-                    "Valid for current academic year"
-                ],
+                
                 Signature = "Authorized Signature: _______________"
             };
         }
@@ -628,14 +622,7 @@ namespace Financial_management_backend.Services
             receipt.Footer = new ThermalReceiptFooter
             {
                 ThankYouMessage = receiptMessage,
-                ContactInfo = "For inquiries: +1-234-567-8900",
-                AdditionalNotes = new List<string> 
-                { 
-                    "Keep this receipt for your records",
-                    itemTransaction.TransactionType == "Item" 
-                        ? "Item received as per requirement list"
-                        : "Thank you for your contribution"
-                },
+               
                 Signature = "Authorized Signature: _______________"
             };
         }

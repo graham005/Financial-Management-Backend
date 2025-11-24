@@ -113,7 +113,6 @@ namespace Financial_management_backend.Services
             
             // Add other fees (like books, activity fees, etc.)
             var otherFees = await _context.OtherFees
-                .Where(of => of.GradeId == student.GradeId)
                 .ToListAsync();
                 
             foreach (var otherFee in otherFees)
