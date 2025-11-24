@@ -44,11 +44,12 @@
         public decimal TotalOutstanding { get; set; }
     }
 
+    // Extend AvailableFeeItemDto so client knows which entity is referenced
     public class AvailableFeeItemDto
     {
         public Guid FeeId { get; set; }
         public string FeeType { get; set; }
-        public string FeeSource { get; set; }
+        public string FeeSource { get; set; }  // Ensure populated with "FeeStructureHistory","OtherFee","CustomFee"
         public string Term { get; set; }
         public int Year { get; set; }
         public decimal TotalAmount { get; set; }

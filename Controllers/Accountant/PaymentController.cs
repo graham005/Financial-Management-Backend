@@ -69,7 +69,7 @@ namespace Financial_management_backend.Controllers.Accountant
                         // Add tuition fees for all terms (past, current)
                         await AddTuitionFees(availableFees, studentId, term, year, student.GradeId);
                         
-                        // FIXED: Add other fees for ALL terms since enrollment (not just current/future)
+                        // Add other fees for ALL terms since enrollment
                         await AddOtherFees(availableFees, studentId, term, year, student.GradeId);
                     }
                 }
@@ -133,15 +133,52 @@ namespace Financial_management_backend.Controllers.Accountant
                 await _context.SaveChangesAsync();
 
                 // Create fee payment records with term and year information
-                List<FeePayment> feePayments = new List<FeePayment>();
+                List<FeePayment> feePayments = [];
                 foreach (var feeAllocation in paymentDto.FeeAllocations)
                 {
+                    var gradeHistoryService = HttpContext.RequestServices.GetRequiredService<IStudentGradeHistoryService>();
+                    Guid historicalGradeId = await gradeHistoryService.GetStudentGradeForTermAsync(paymentDto.StudentId, feeAllocation.Term, feeAllocation.Year);
+
+                    Guid resolvedFeeId = feeAllocation.FeeId;
+                    string feeSource = feeAllocation.FeeSource;
+
+                    // UPDATED: Check current FeeStructure first, then FeeStructureHistory
+                    if (feeAllocation.FeeType == "Tuition" && feeAllocation.FeeSource == "FeeStructure")
+                    {
+                        // First, try to get the current FeeStructure for this grade
+                        var currentStructure = await _context.FeeStructures
+                            .FirstOrDefaultAsync(fs => fs.GradeId == historicalGradeId);
+
+                        if (currentStructure != null)
+                        {
+                            // Use current fee structure
+                            resolvedFeeId = currentStructure.Id;
+                            feeSource = "FeeStructure";
+                        }
+                        else
+                        {
+                            // Fall back to FeeStructureHistory if no current structure exists
+                            var history = await _context.FeeStructureHistories
+                                .Where(h => h.GradeId == historicalGradeId && h.AcademicYear == feeAllocation.Year)
+                                .OrderByDescending(h => h.EffectiveFrom)
+                                .FirstOrDefaultAsync();
+
+                            if (history != null)
+                            {
+                                resolvedFeeId = history.Id;
+                                feeSource = "FeeStructureHistory";
+                            }
+                        }
+                    }
+
                     var feePayment = new FeePayment
                     {
                         Id = Guid.NewGuid(),
                         PaymentId = payment.Id,
-                        FeeId = feeAllocation.FeeId,
+                        FeeId = resolvedFeeId,       // ✅ Points to FeeStructure or FeeStructureHistory
+                        FeeSource = feeSource,       // ✅ Disambiguates the source table
                         FeeType = feeAllocation.FeeType,
+                        GradeId = historicalGradeId, // ✅ Store grade for audit purposes
                         Amount = feeAllocation.Amount,
                         Term = feeAllocation.Term,
                         Year = feeAllocation.Year
@@ -202,9 +239,7 @@ namespace Financial_management_backend.Controllers.Accountant
         private async Task AddTuitionFees(List<AvailableFeeItemDto> availableFees, Guid studentId, string term, int year, Guid currentGradeId)
         {
             var gradeHistoryService = HttpContext.RequestServices.GetRequiredService<IStudentGradeHistoryService>();
-            var historicalFeeService = HttpContext.RequestServices.GetRequiredService<IHistoricalFeeStructureService>();
 
-            // CRITICAL FIX: Get the grade the student was in during this term/year
             Guid historicalGradeId;
             try
             {
@@ -212,17 +247,16 @@ namespace Financial_management_backend.Controllers.Accountant
             }
             catch
             {
-                // Student wasn't enrolled during this term, skip
                 return;
             }
 
-            // Check for custom fee first
+            // Check custom fee first
             var customFee = await _context.CustomFees
                 .FirstOrDefaultAsync(cf => cf.StudentId == studentId && cf.Term == term && cf.Year == year);
 
             if (customFee != null)
             {
-                var paidAmount = await GetPaidAmountForFee(customFee.Id, "Custom Tuition");
+                var customPaidAmount = await GetPaidAmountForFee(customFee.Id, "Custom Tuition");
                 availableFees.Add(new AvailableFeeItemDto
                 {
                     FeeId = customFee.Id,
@@ -231,49 +265,89 @@ namespace Financial_management_backend.Controllers.Accountant
                     Term = term,
                     Year = year,
                     TotalAmount = customFee.Amount,
-                    PaidAmount = paidAmount,
-                    OutstandingAmount = Math.Max(customFee.Amount - paidAmount, 0),
+                    PaidAmount = customPaidAmount,
+                    OutstandingAmount = Math.Max(customFee.Amount - customPaidAmount, 0),
                     Description = $"Custom tuition fee for {term} {year}",
                     IsOverdue = IsTermOverdue(term, year)
                 });
                 return;
             }
 
-            // CRITICAL FIX: Get historical fee structure for the correct grade and year
-            var termFee = await historicalFeeService.GetTermFeeForGradeAndYearAsync(historicalGradeId, term, year);
+            // UPDATED: Check current FeeStructure first, then fall back to FeeStructureHistory
+            var currentFeeStructure = await _context.FeeStructures
+                .FirstOrDefaultAsync(fs => fs.GradeId == historicalGradeId);
 
-            if (termFee > 0)
+            Guid feeStructureId;
+            decimal termFee;
+            string feeSource;
+
+            if (currentFeeStructure != null)
             {
-                var paidAmount = await GetPaidAmountForTuition(studentId, term, year);
-
-                var grade = await _context.Grades.FindAsync(historicalGradeId);
-
-                availableFees.Add(new AvailableFeeItemDto
+                // Use current fee structure
+                feeStructureId = currentFeeStructure.Id;
+                feeSource = "FeeStructure";
+                termFee = term switch
                 {
-                    FeeId = historicalGradeId, // Using grade ID as fee structure might not have persistent ID
-                    FeeType = "Tuition",
-                    FeeSource = "FeeStructure",
-                    Term = term,
-                    Year = year,
-                    TotalAmount = termFee,
-                    PaidAmount = paidAmount,
-                    OutstandingAmount = Math.Max(termFee - paidAmount, 0),
-                    Description = $"Tuition fee for {grade?.Name ?? "Unknown Grade"} - {term} {year}",
-                    IsOverdue = IsTermOverdue(term, year)
-                });
+                    "Term 1" => currentFeeStructure.Term1Fee,
+                    "Term 2" => currentFeeStructure.Term2Fee,
+                    "Term 3" => currentFeeStructure.Term3Fee,
+                    _ => 0
+                };
             }
+            else
+            {
+                // Fall back to historical record
+                var feeHistory = await _context.FeeStructureHistories
+                    .Where(h => h.GradeId == historicalGradeId && h.AcademicYear == year)
+                    .OrderByDescending(h => h.EffectiveFrom)
+                    .FirstOrDefaultAsync();
+
+                if (feeHistory == null)
+                    return;
+
+                feeStructureId = feeHistory.Id;
+                feeSource = "FeeStructureHistory";
+                termFee = term switch
+                {
+                    "Term 1" => feeHistory.Term1Fee,
+                    "Term 2" => feeHistory.Term2Fee,
+                    "Term 3" => feeHistory.Term3Fee,
+                    _ => 0
+                };
+            }
+
+            if (termFee <= 0)
+                return;
+
+            var tuitionPaidAmount = await GetPaidAmountForTuition(studentId, term, year);
+            var grade = await _context.Grades.FindAsync(historicalGradeId);
+
+            availableFees.Add(new AvailableFeeItemDto
+            {
+                FeeId = feeStructureId, // ✅ Uses current FeeStructure or FeeStructureHistory
+                FeeType = "Tuition",
+                FeeSource = feeSource,
+                Term = term,
+                Year = year,
+                TotalAmount = termFee,
+                PaidAmount = tuitionPaidAmount,
+                OutstandingAmount = Math.Max(termFee - tuitionPaidAmount, 0),
+                Description = $"Tuition fee for {grade?.Name ?? "Unknown Grade"} - {term} {year}",
+                IsOverdue = IsTermOverdue(term, year)
+            });
         }
 
         // FIXED: AddOtherFees now works for all terms, not just current/future
         private async Task AddOtherFees(List<AvailableFeeItemDto> availableFees, Guid studentId, string term, int year, Guid gradeId)
         {
+            // Get other fees for the specified year (both active and archived)
             var otherFees = await _context.OtherFees
-                .Where(of => of.GradeId == gradeId)
+                .Where(of => of.AcademicYear == year)
                 .ToListAsync();
 
             foreach (var otherFee in otherFees)
             {
-                // FIXED: Get paid amount for this specific term/year
+                // Get paid amount for this specific term/year
                 var paidAmount = await GetPaidAmountForOtherFee(otherFee.Id, studentId, term, year);
                 var outstandingAmount = Math.Max(otherFee.Amount - paidAmount, 0);
 
@@ -307,7 +381,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 .SumAsync(fp => fp.Amount);
         }
 
-        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
+        // Use FeePayment.Term and FeePayment.Year directly
         private async Task<decimal> GetPaidAmountForTuition(Guid studentId, string term, int year)
         {
             return await _context.FeePayments
@@ -319,7 +393,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 .SumAsync(fp => fp.Amount);
         }
 
-        // UPDATED: Use FeePayment.Term and FeePayment.Year directly
+        // Use FeePayment.Term and FeePayment.Year directly
         private async Task<decimal> GetPaidAmountForOtherFee(Guid otherFeeId, Guid studentId, string term, int year)
         {
             return await _context.FeePayments
@@ -331,7 +405,7 @@ namespace Financial_management_backend.Controllers.Accountant
                 .SumAsync(fp => fp.Amount);
         }
 
-        // FIXED: IsTermOverdue now uses AcademicTermService and compares both year and term
+        // IsTermOverdue now uses AcademicTermService and compares both year and term
         private bool IsTermOverdue(string term, int year)
         {
             var (currentTerm, currentYear) = _academicTermService.GetCurrentAcademicTerm();
@@ -402,8 +476,6 @@ namespace Financial_management_backend.Controllers.Accountant
             if (studentId.HasValue)
                 query = query.Where(p => p.StudentId == studentId);
 
-            // UPDATED: Filter by FeePayment.Term if term parameter is provided
-
             if (startDate.HasValue)
                 query = query.Where(p => p.PaymentDate >= startDate.Value);
 
@@ -416,7 +488,10 @@ namespace Financial_management_backend.Controllers.Accountant
             var paymentIds = payments.Select(p => p.Id).ToList();
             var transactions = await _context.FinancialTransactions
                 .Where(t => t.PaymentId.HasValue && paymentIds.Contains(t.PaymentId.Value))
-                .ToDictionaryAsync(t => t.PaymentId.Value, t => t.Id);
+                .ToDictionaryAsync(
+                    t => t.PaymentId ?? Guid.Empty,     
+                    t => t.Id
+                );
 
             return Ok(payments.Select(p => new
             {
@@ -451,7 +526,7 @@ namespace Financial_management_backend.Controllers.Accountant
             });
         }
 
-        // FIXED: GET: api/payment/student/{studentId}/arrears - now uses AcademicTermService
+        // GET: api/payment/student/{studentId}/arrears
         [HttpGet("student/{studentId}/arrears")]
         public async Task<IActionResult> GetStudentArrears(Guid studentId)
         {
@@ -477,7 +552,7 @@ namespace Financial_management_backend.Controllers.Accountant
             });
         }
 
-        // FIXED: GET: api/payment/grade/{gradeId}/arrears - now uses AcademicTermService
+        // GET: api/payment/grade/{gradeId}/arrears
         [HttpGet("grade/{gradeId}/arrears")]
         public async Task<IActionResult> GetGradeArrears(Guid gradeId)
         {

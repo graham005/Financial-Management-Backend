@@ -18,8 +18,15 @@ namespace Financial_management_backend.Models
         public Guid FeeId { get; set; }
 
         [Required]
+        [StringLength(40)]
+        public string FeeSource { get; set; }
+
+        [Required]
         [StringLength(50)]
         public string FeeType { get; set; }
+
+        [Required]
+        public Guid GradeId { get; set; }
 
         [Required]
         [Range(0, double.MaxValue)]
