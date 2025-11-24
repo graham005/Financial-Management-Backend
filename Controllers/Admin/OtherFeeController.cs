@@ -1,7 +1,9 @@
 ﻿using Financial_management_backend.Data;
 using Financial_management_backend.Models;
+using Financial_management_backend.Services;
 using Financial_management_backend.Services.Dtos;
-using Microsoft.AspNetCore.Http;
+using Financial_management_backend.Services.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,116 +11,326 @@ namespace Financial_management_backend.Controllers.Admin
 {
     [Route("api/admin/[controller]")]
     [ApiController]
+    [Authorize(Roles = "Admin")]
     public class OtherFeeController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IAcademicTermService _academicTermService;
 
-        public OtherFeeController(ApplicationDbContext context)
+        public OtherFeeController(
+            ApplicationDbContext context,
+            IAcademicTermService academicTermService)
         {
             _context = context;
+            _academicTermService = academicTermService;
         }
 
-
-        [HttpPost]
-        public async Task<IActionResult> CreateOtherFee([FromBody] CreateOtherFeeDto createOtherFeeDto)
-        {
-            var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == createOtherFeeDto.GradeName);
-            if (grade == null)
-            {
-                return NotFound("Grade not found.");
-            }
-
-            var otherFee = new OtherFee
-            {
-                Name = createOtherFeeDto.Name,
-                GradeId = grade.Id,
-                Amount = createOtherFeeDto.Amount
-            };
-
-            await _context.OtherFees.AddAsync(otherFee);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetOtherFeeById), new { id = otherFee.Id }, otherFee);
-
-        }
-
-        [HttpPatch("{id}")]
-        public async Task<IActionResult> UpdateOtherFee(Guid id, [FromBody] UpdateOtherFeeDto updateOtherFeeDto)
-        {
-            var otherFee = await _context.OtherFees.FindAsync(id);
-            if (otherFee == null)
-                return NotFound();
-
-            if (updateOtherFeeDto.Name != null)
-                otherFee.Name = updateOtherFeeDto.Name;
-
-            if (!string.IsNullOrWhiteSpace(updateOtherFeeDto.GradeName))
-            {
-                var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateOtherFeeDto.GradeName);
-                if (grade == null)
-                    return NotFound("Grade not found");
-                otherFee.GradeId = grade.Id;
-            }
-
-            if (updateOtherFeeDto.Amount != null)
-                otherFee.Amount = updateOtherFeeDto.Amount.Value;
-
-            await _context.SaveChangesAsync();
-            return Ok(otherFee);
-        }
-
+        // GET: api/admin/otherfee
         [HttpGet]
-        public async Task<IActionResult> GetAllOtherFees([FromQuery] Guid? gradeId)
+        public async Task<IActionResult> GetAllOtherFees(
+            [FromQuery] int? year,
+            [FromQuery] string? status)
         {
-            var query = _context.OtherFees
-                .Include(of => of.Grade)
-                .AsQueryable();
-
-            if (gradeId.HasValue)
+            try
             {
-                query = query.Where(of => of.GradeId == gradeId.Value);
+                var query = _context.OtherFees.AsQueryable();
+
+                if (year.HasValue)
+                    query = query.Where(of => of.AcademicYear == year.Value);
+
+                if (!string.IsNullOrEmpty(status))
+                    query = query.Where(of => of.Status == status);
+
+                var fees = await query
+                    .OrderByDescending(of => of.AcademicYear)
+                    .ThenBy(of => of.Name)
+                    .ToListAsync();
+
+                var result = fees.Select(of => new OtherFeeDto
+                {
+                    Id = of.Id,
+                    Name = of.Name,
+                    Description = of.Description,
+                    Amount = of.Amount,
+                    AcademicYear = of.AcademicYear,
+                    Status = of.Status,
+                    CreatedAt = of.CreatedAt,
+                    ArchivedAt = of.ArchivedAt
+                });
+
+                return Ok(result);
             }
-
-            var otherFees = await query.ToListAsync();
-
-            return Ok(otherFees.Select(of => new
+            catch (Exception ex)
             {
-                Id = of.Id,
-                Name = of.Name,
-                GradeName = of.Grade.Name,
-                Amount = of.Amount
-            }));
+                return StatusCode(500, $"Error retrieving other fees: {ex.Message}");
+            }
         }
 
+        // GET: api/admin/otherfee/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetOtherFeeById(Guid id)
         {
-            var otherFee = await _context.OtherFees
-                .Include(of => of.Grade) // include Grade details
-                .FirstOrDefaultAsync(of => of.Id == id);
-
-            if (otherFee == null)
-                return NotFound("Other with that ID not found.");
-
-            return Ok(new
+            try
             {
-                Id = otherFee.Id,
-                Name = otherFee.Name,
-                GradeName = otherFee.Grade.Name,
-                Amount = otherFee.Amount
-            });
+                var fee = await _context.OtherFees.FindAsync(id);
+
+                if (fee == null)
+                    return NotFound("Other fee not found");
+
+                return Ok(new OtherFeeDto
+                {
+                    Id = fee.Id,
+                    Name = fee.Name,
+                    Description = fee.Description,
+                    Amount = fee.Amount,
+                    AcademicYear = fee.AcademicYear,
+                    Status = fee.Status,
+                    CreatedAt = fee.CreatedAt,
+                    ArchivedAt = fee.ArchivedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error retrieving other fee: {ex.Message}");
+            }
         }
 
+        // POST: api/admin/otherfee
+        [HttpPost]
+        public async Task<IActionResult> CreateOtherFee([FromBody] CreateOtherFeeDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var userId = User.GetUserId();
+                if (userId == null)
+                    return Unauthorized("User ID not found in token");
+
+                // Use provided year or current academic year
+                var (_, currentYear) = _academicTermService.GetCurrentAcademicTerm();
+                var academicYear = dto.AcademicYear ?? currentYear;
+
+                // Check for duplicate active fees with same name for this year
+                var existingFee = await _context.OtherFees
+                    .FirstOrDefaultAsync(of => of.Name == dto.Name && 
+                                             of.AcademicYear == academicYear &&
+                                             of.Status == "Active");
+
+                if (existingFee != null)
+                    return Conflict($"An active fee named '{dto.Name}' already exists for year {academicYear}");
+
+                var otherFee = new OtherFee
+                {
+                    Name = dto.Name,
+                    Description = dto.Description,
+                    Amount = dto.Amount,
+                    AcademicYear = academicYear,
+                    Status = "Active",
+                    CreatedBy = userId.Value,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _context.OtherFees.AddAsync(otherFee);
+                await _context.SaveChangesAsync();
+
+                return CreatedAtAction(nameof(GetOtherFeeById), new { id = otherFee.Id }, new OtherFeeDto
+                {
+                    Id = otherFee.Id,
+                    Name = otherFee.Name,
+                    Description = otherFee.Description,
+                    Amount = otherFee.Amount,
+                    AcademicYear = otherFee.AcademicYear,
+                    Status = otherFee.Status,
+                    CreatedAt = otherFee.CreatedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating other fee: {ex.Message}");
+            }
+        }
+
+        // PATCH: api/admin/otherfee/{id}
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateOtherFee(Guid id, [FromBody] UpdateOtherFeeDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var fee = await _context.OtherFees.FindAsync(id);
+                if (fee == null)
+                    return NotFound("Other fee not found");
+
+                if (fee.Status == "Archived")
+                    return BadRequest("Cannot update archived fees");
+
+                if (!string.IsNullOrEmpty(dto.Name))
+                {
+                    // Check for duplicate names for the same year
+                    var duplicate = await _context.OtherFees
+                        .AnyAsync(of => of.Name == dto.Name && 
+                                      of.AcademicYear == fee.AcademicYear &&
+                                      of.Id != id &&
+                                      of.Status == "Active");
+
+                    if (duplicate)
+                        return Conflict($"An active fee named '{dto.Name}' already exists for year {fee.AcademicYear}");
+
+                    fee.Name = dto.Name;
+                }
+
+                if (!string.IsNullOrEmpty(dto.Description))
+                    fee.Description = dto.Description;
+
+                if (dto.Amount > 0)
+                    fee.Amount = dto.Amount;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new OtherFeeDto
+                {
+                    Id = fee.Id,
+                    Name = fee.Name,
+                    Description = fee.Description,
+                    Amount = fee.Amount,
+                    AcademicYear = fee.AcademicYear,
+                    Status = fee.Status,
+                    CreatedAt = fee.CreatedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error updating other fee: {ex.Message}");
+            }
+        }
+
+        // POST: api/admin/otherfee/archive
+        [HttpPost("archive")]
+        public async Task<IActionResult> ArchiveOtherFees([FromBody] ArchiveOtherFeeDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var userId = User.GetUserId();
+                if (userId == null)
+                    return Unauthorized("User ID not found in token");
+
+                var query = _context.OtherFees
+                    .Where(of => of.AcademicYear == dto.AcademicYear && of.Status == "Active");
+
+                // If specific fee IDs provided, filter to those
+                if (dto.FeeIds != null && dto.FeeIds.Any())
+                    query = query.Where(of => dto.FeeIds.Contains(of.Id));
+
+                var feesToArchive = await query.ToListAsync();
+
+                if (!feesToArchive.Any())
+                    return NotFound($"No active fees found for year {dto.AcademicYear}");
+
+                foreach (var fee in feesToArchive)
+                {
+                    fee.Status = "Archived";
+                    fee.ArchivedAt = DateTime.UtcNow;
+                    fee.ArchivedBy = userId.Value;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    Message = $"Successfully archived {feesToArchive.Count} fee(s) for year {dto.AcademicYear}",
+                    ArchivedCount = feesToArchive.Count,
+                    ArchivedFees = feesToArchive.Select(f => new { f.Id, f.Name, f.Amount })
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error archiving fees: {ex.Message}");
+            }
+        }
+
+        // POST: api/admin/otherfee/{id}/unarchive
+        [HttpPost("{id}/unarchive")]
+        public async Task<IActionResult> UnarchiveOtherFee(Guid id)
+        {
+            try
+            {
+                var fee = await _context.OtherFees.FindAsync(id);
+                if (fee == null)
+                    return NotFound("Other fee not found");
+
+                if (fee.Status != "Archived")
+                    return BadRequest("Fee is not archived");
+
+                // Check for duplicate active fees with same name for this year
+                var duplicate = await _context.OtherFees
+                    .AnyAsync(of => of.Name == fee.Name && 
+                                  of.AcademicYear == fee.AcademicYear &&
+                                  of.Id != id &&
+                                  of.Status == "Active");
+
+                if (duplicate)
+                    return Conflict($"An active fee named '{fee.Name}' already exists for year {fee.AcademicYear}");
+
+                fee.Status = "Active";
+                fee.ArchivedAt = null;
+                fee.ArchivedBy = null;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    Message = "Fee unarchived successfully",
+                    Fee = new OtherFeeDto
+                    {
+                        Id = fee.Id,
+                        Name = fee.Name,
+                        Description = fee.Description,
+                        Amount = fee.Amount,
+                        AcademicYear = fee.AcademicYear,
+                        Status = fee.Status,
+                        CreatedAt = fee.CreatedAt
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error unarchiving fee: {ex.Message}");
+            }
+        }
+
+        // DELETE: api/admin/otherfee/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteOtherFee(Guid id)
         {
-            var otherFee = await _context.OtherFees.FindAsync(id);
-            if (otherFee == null)
-                return NotFound("OtherFee with that ID not found");
+            try
+            {
+                var fee = await _context.OtherFees.FindAsync(id);
+                if (fee == null)
+                    return NotFound("Other fee not found");
 
-            _context.OtherFees.Remove(otherFee);
-            await _context.SaveChangesAsync();
-            return Ok("The Other Fee has been deleted Successfully");
+                // Check if any payments reference this fee
+                var hasPayments = await _context.FeePayments
+                    .AnyAsync(fp => fp.FeeId == id && fp.FeeSource == "OtherFee");
+
+                if (hasPayments)
+                    return BadRequest("Cannot delete fee with associated payments. Consider archiving instead.");
+
+                _context.OtherFees.Remove(fee);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { Message = "Other fee deleted successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error deleting other fee: {ex.Message}");
+            }
         }
     }
 }
