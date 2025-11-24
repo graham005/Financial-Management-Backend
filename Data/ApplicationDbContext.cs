@@ -74,12 +74,6 @@ namespace Financial_management_backend.Data
                 .HasForeignKey(sfo => sfo.StudentId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<OtherFee>()
-                .HasOne(of => of.Grade)
-                .WithMany()
-                .HasForeignKey(of => of.GradeId)
-                .OnDelete(DeleteBehavior.Restrict);
-
             modelBuilder.Entity<Payment>()
                 .HasOne(p => p.Student)
                 .WithMany()
