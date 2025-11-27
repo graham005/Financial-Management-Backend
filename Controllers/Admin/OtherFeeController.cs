@@ -108,25 +108,24 @@ namespace Financial_management_backend.Controllers.Admin
                 if (userId == null)
                     return Unauthorized("User ID not found in token");
 
-                // Use provided year or current academic year
+                // Automatically use current academic year
                 var (_, currentYear) = _academicTermService.GetCurrentAcademicTerm();
-                var academicYear = dto.AcademicYear ?? currentYear;
 
-                // Check for duplicate active fees with same name for this year
+                // Check for duplicate active fees with same name for current year
                 var existingFee = await _context.OtherFees
                     .FirstOrDefaultAsync(of => of.Name == dto.Name && 
-                                             of.AcademicYear == academicYear &&
+                                             of.AcademicYear == currentYear &&
                                              of.Status == "Active");
 
                 if (existingFee != null)
-                    return Conflict($"An active fee named '{dto.Name}' already exists for year {academicYear}");
+                    return Conflict($"An active fee named '{dto.Name}' already exists for year {currentYear}");
 
                 var otherFee = new OtherFee
                 {
                     Name = dto.Name,
                     Description = dto.Description,
                     Amount = dto.Amount,
-                    AcademicYear = academicYear,
+                    AcademicYear = currentYear, // ✅ Automatically assigned
                     Status = "Active",
                     CreatedBy = userId.Value,
                     CreatedAt = DateTime.UtcNow
