@@ -4,6 +4,7 @@ using Financial_management_backend.Services;
 using Financial_management_backend.Services.BackgroundServices;
 using Financial_management_backend.Services.Dtos;
 using Financial_management_backend.Services.ItemManagement;
+using Financial_management_backend.Services.Reports;
 using Financial_management_backend.Services.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -101,6 +102,9 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IStudentGradeHistoryService, StudentGradeHistoryService>();
 builder.Services.AddScoped<IHistoricalFeeStructureService, HistoricalFeeStructureService>();
 builder.Services.AddScoped<IStudentPromotionService, StudentPromotionService>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IPdfReportGenerator, PdfReportGenerator>();
+builder.Services.AddScoped<IExcelReportGenerator, ExcelReportGenerator>();  
 
 var app = builder.Build();
 
