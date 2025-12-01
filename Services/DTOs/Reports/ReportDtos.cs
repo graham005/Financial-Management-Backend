@@ -13,7 +13,7 @@ namespace Financial_management_backend.Services.Dtos.Reports
         public Guid? StudentId { get; set; }
         public string? PaymentMethod { get; set; }
         public string? FeeType { get; set; }
-        public string Format { get; set; } = "PDF"; // PDF or Excel
+        public string Format { get; set; } = "JSON"; // JSON or PDF or Excel
     }
 
     // Daily Collections Report
