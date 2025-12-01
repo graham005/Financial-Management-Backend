@@ -10,21 +10,14 @@ namespace Financial_management_backend.Controllers.Admin
     [Route("api/admin/[controller]")]
     [ApiController]
     [Authorize(Roles = "Admin,Accountant")]
-    public class ReportController : ControllerBase
+    public class ReportController(
+        IReportService reportService,
+        IPdfReportGenerator pdfGenerator,
+        IExcelReportGenerator excelGenerator) : ControllerBase
     {
-        private readonly IReportService _reportService;
-        private readonly IPdfReportGenerator _pdfGenerator;
-        private readonly IExcelReportGenerator _excelGenerator;
-
-        public ReportController(
-            IReportService reportService,
-            IPdfReportGenerator pdfGenerator,
-            IExcelReportGenerator excelGenerator)
-        {
-            _reportService = reportService;
-            _pdfGenerator = pdfGenerator;
-            _excelGenerator = excelGenerator;
-        }
+        private readonly IReportService _reportService = reportService;
+        private readonly IPdfReportGenerator _pdfGenerator = pdfGenerator;
+        private readonly IExcelReportGenerator _excelGenerator = excelGenerator;
 
         // ==================== DAILY COLLECTIONS REPORT ====================
 
@@ -457,7 +450,7 @@ namespace Financial_management_backend.Controllers.Admin
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { Message = ex.Message });
+                return NotFound(new { ex.Message });
             }
             catch (Exception ex)
             {
@@ -476,7 +469,7 @@ namespace Financial_management_backend.Controllers.Admin
                 if (userId == null)
                     return Unauthorized("User ID not found in token");
 
-                if (request.StudentIds == null || !request.StudentIds.Any())
+                if (request.StudentIds == null || request.StudentIds.Count == 0)
                     return BadRequest("At least one student ID is required");
 
                 // For now, we'll return a ZIP file containing all PDFs
@@ -571,7 +564,7 @@ namespace Financial_management_backend.Controllers.Admin
     // Request DTO for batch statements
     public class BatchStatementRequest
     {
-        public List<Guid> StudentIds { get; set; } = new();
+        public List<Guid> StudentIds { get; set; } = [];
         public string Format { get; set; } = "PDF";
     }
 }
