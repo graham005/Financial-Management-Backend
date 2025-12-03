@@ -109,7 +109,8 @@ namespace Financial_management_backend.Controllers.Admin
                 ParentName = student.Parent.Name,
                 ParentFirstName = student.Parent.FirstName,
                 ParentLastName = student.Parent.LastName,
-                ParentPhoneNumber = student.Parent?.PhoneNumber
+                ParentPhoneNumber = student.Parent?.PhoneNumber,
+                Status = student.Status
 
             }).ToList();
 

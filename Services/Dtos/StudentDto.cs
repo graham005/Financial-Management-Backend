@@ -1,4 +1,6 @@
-﻿namespace Financial_management_backend.Services.Dtos
+﻿using Financial_management_backend.Models;
+
+namespace Financial_management_backend.Services.Dtos
 {
     public class StudentDto
     {
@@ -14,5 +16,6 @@
         public string ParentFirstName { get; set; }
         public string ParentLastName { get; set; }
         public string? ParentPhoneNumber { get; set; }
+        public StudentStatus Status { get; set; }
     }
 }

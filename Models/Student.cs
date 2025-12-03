@@ -1,5 +1,13 @@
 ﻿namespace Financial_management_backend.Models
 {
+    public enum StudentStatus
+    {
+        Active ,
+        Graduated,
+        Transferred,
+        Withdrawn
+    }
+
     public class Student
     {
         public Guid Id { get; set; } = Guid.NewGuid();
@@ -18,5 +26,9 @@
 
         public Guid ParentId { get; set; }
         public Parent Parent { get; set; }
+
+        public StudentStatus Status { get; set; } = StudentStatus.Active;
+
+        public DateTime? GraduationDate { get; set; }
     }
 }

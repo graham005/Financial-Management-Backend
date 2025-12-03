@@ -39,22 +39,22 @@ namespace Financial_management_backend.Services
             {
                 var currentGrade = group.Key;
                 var nextGrade = await _context.Grades
-                    .FirstOrDefaultAsync(g => g.Level == currentGrade.Level + 1);
+                    .FirstOrDefaultAsync(g => g.Level == currentGrade.Level + 1) ?? throw new InvalidOperationException("Next Grade is null");
 
                 promotionGroups.Add(new PromotionGroupDto
                 {
                     CurrentGradeId = currentGrade.Id,
                     CurrentGradeName = currentGrade.Name,
                     CurrentGradeLevel = currentGrade.Level,
-                    NextGradeName = currentGrade.IsGraduationGrade ? "Graduated" : nextGrade?.Name,
+                    NextGradeName = currentGrade.IsGraduationGrade ? "Graduated" : nextGrade.Name,
                     NextGradeId = nextGrade?.Id,
                     IsGraduation = currentGrade.IsGraduationGrade,
-                    Students = group.Select(s => new StudentPromotionDto
+                    Students = [.. group.Select(s => new StudentPromotionDto
                     {
                         StudentId = s.Id,
                         AdmissionNumber = s.AdmissionNumber,
                         Name = s.Name
-                    }).ToList()
+                    })]
                 });
             }
 
@@ -78,8 +78,8 @@ namespace Financial_management_backend.Services
 
             var result = new PromotionResultDto
             {
-                PromotedStudents = new List<PromotedStudentDto>(),
-                FailedPromotions = new List<FailedPromotionDto>()
+                PromotedStudents = [],
+                FailedPromotions = []
             };
 
             foreach (var studentId in studentIds)
@@ -104,6 +104,11 @@ namespace Financial_management_backend.Services
 
                     if (oldGrade.IsGraduationGrade)
                     {
+                        // Mark student as graduated
+                        student.Status = StudentStatus.Graduated;
+                        student.GraduationDate = DateTime.UtcNow;
+                        // Keep them in Grade 6 but with Graduated status
+
                         result.PromotedStudents.Add(new PromotedStudentDto
                         {
                             StudentId = student.Id,
@@ -112,8 +117,6 @@ namespace Financial_management_backend.Services
                             ToGrade = "Graduated",
                             IsGraduation = true
                         });
-                        // Note: We don't change GradeId for graduated students
-                        // They stay in their graduation grade
                     }
                     else
                     {
