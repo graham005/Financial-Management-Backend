@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # SQL Server Database (Development)
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: financial-db-dev
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Dev@Passw0rd123
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-dev-data:/var/opt/mssql
+    networks:
+      - financial-network
+    restart: unless-stopped
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "Dev@Passw0rd123" -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # .NET Backend API (Development with Hot Reload)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: financial-backend-dev
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080;https://+:8081
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=FinancialManagementDB_Dev;User Id=sa;Password=Dev@Passw0rd123;TrustServerCertificate=True;MultipleActiveResultSets=True;
+      - JwtConfig__Key=DevSecretKeyForTesting12345678901234567890
+      - JwtConfig__Issuer=FinancialManagementAPI_Dev
+      - JwtConfig__Audience=FinancialManagementClient_Dev
+      - JwtConfig__ExpireTime=120
+      - JwtConfig__RefreshTokenValidityMins=43200
+      - Logging__LogLevel__Default=Debug
+      - Logging__LogLevel__Microsoft.AspNetCore=Information
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+    ports:
+      - "5000:8080"  # HTTP
+      - "5001:8081"  # HTTPS
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - financial-network
+    restart: unless-stopped
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      - ~/.microsoft/usersecrets:/root/.microsoft/usersecrets:ro
+      - ~/.aspnet/https:/https:ro
+      # Exclude bin and obj folders
+      - /app/bin
+      - /app/obj
+    stdin_open: true
+    tty: true
+
+  # Adminer - Database Management UI (Development Only)
+  adminer:
+    image: adminer:latest
+    container_name: financial-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - financial-network
+    restart: unless-stopped
+    environment:
+      - ADMINER_DEFAULT_SERVER=sqlserver
+
+networks:
+  financial-network:
+    driver: bridge
+
+volumes:
+  sqlserver-dev-data:
+    driver: local

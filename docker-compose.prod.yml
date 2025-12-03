@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # .NET Backend API (Production) - Using Azure SQL Database
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    container_name: financial-backend-prod
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=tcp:${DB_SERVER},1433;Initial Catalog=${DB_NAME};User ID=${DB_USER};Password=${DB_PASSWORD};Encrypt=${DB_ENCRYPT};TrustServerCertificate=${DB_TRUST_SERVER_CERTIFICATE};Connection Timeout=${DB_CONNECTION_TIMEOUT};MultipleActiveResultSets=False;
+      - JwtConfig__Key=${JWT_SECRET_KEY}
+      - JwtConfig__Issuer=${JWT_ISSUER}
+      - JwtConfig__Audience=${JWT_AUDIENCE}
+      - JwtConfig__ExpireTime=${JWT_EXPIRE_MINUTES}
+      - JwtConfig__RefreshTokenValidityMins=${JWT_REFRESH_EXPIRE_MINUTES}
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+    ports:
+      - "5000:8080"
+    networks:
+      - financial-network
+    restart: always
+    volumes:
+      - app-logs:/app/logs
+      - app-data:/app/data
+    healthcheck:
+      test: curl --fail http://localhost:8080/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Nginx Reverse Proxy (Production)
+  nginx:
+    image: nginx:alpine
+    container_name: financial-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    networks:
+      - financial-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  financial-network:
+    driver: bridge
+
+volumes:
+  app-logs:
+    driver: local
+  app-data:
+    driver: local

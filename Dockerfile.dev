@@ -1,0 +1,35 @@
+# ==============================================
+# DEVELOPMENT DOCKERFILE
+# Includes hot reload and debugging capabilities
+# ==============================================
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS development
+WORKDIR /app
+
+# Install dependencies for PDF generation
+RUN apt-get update && apt-get install -y \
+    libgdiplus \
+    libc6-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy csproj and restore
+COPY ["Financial-Management-Backend.csproj", "./"]
+RUN dotnet restore "Financial-Management-Backend.csproj"
+
+# Copy everything else
+COPY . .
+
+# Expose ports (HTTP + HTTPS)
+EXPOSE 8080
+EXPOSE 8081
+
+# Environment variables for development
+ENV ASPNETCORE_URLS=http://+:8080;https://+:8081 \
+    ASPNETCORE_ENVIRONMENT=Development \
+    DOTNET_USE_POLLING_FILE_WATCHER=true \
+    ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx \
+    ASPNETCORE_Kestrel__Certificates__Default__Password=YourDevPassword
+
+# Run with hot reload enabled
+ENTRYPOINT ["dotnet", "watch", "run", "--project", "Financial-Management-Backend.csproj"]
