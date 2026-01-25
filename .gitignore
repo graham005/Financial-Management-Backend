@@ -363,6 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 /appsettings.json
 /Migrations
-Financial_management_backend.csproj
 /.env.development
 /.env.production
