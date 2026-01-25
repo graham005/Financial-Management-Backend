@@ -102,6 +102,11 @@ builder.Services.AddCors(options =>
                    .AllowAnyHeader();
         });
 });
+
+// Add Health Checks
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>();
+
 // Registering repository and background services 
 builder.Services.AddHostedService<TokenCleanupService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
@@ -176,11 +181,34 @@ for (int i = 0; i < maxRetries; i++)
 }
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Financial Management API v1");
+        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+    });
 }
+
+// Add root endpoint
+app.MapGet("/", () => Results.Ok(new
+{
+    Service = "Financial Management API",
+    Status = "Running",
+    Version = "1.0.0",
+    Environment = app.Environment.EnvironmentName,
+    Timestamp = DateTime.UtcNow,
+    Endpoints = new
+    {
+        Swagger = "/swagger",
+        Health = "/health",
+        API = "/api"
+    }
+}));
+
+// Map health checks
+app.MapHealthChecks("/health");
 
 app.UseHttpsRedirection();
 
