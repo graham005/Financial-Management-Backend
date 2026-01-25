@@ -14,8 +14,8 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Build connection string from environment variables
-var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_NAME")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};Encrypt={Environment.GetEnvironmentVariable("DB_ENCRYPT") ?? "True"};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_SERVER_CERTIFICATE") ?? "False"};Connection Timeout={Environment.GetEnvironmentVariable("DB_CONNECTION_TIMEOUT") ?? "30"};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULT_SETS") ?? "False"}";
+// Build connection string from environment variables with increased timeout
+var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_NAME")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};Encrypt={Environment.GetEnvironmentVariable("DB_ENCRYPT") ?? "True"};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_SERVER_CERTIFICATE") ?? "False"};Connection Timeout={Environment.GetEnvironmentVariable("DB_CONNECTION_TIMEOUT") ?? "60"};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULT_SETS") ?? "False"};ConnectRetryCount=3;ConnectRetryInterval=10";
 
 // Get JWT configuration from environment variables
 var jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? builder.Configuration["JwtConfig:Key"];
@@ -51,7 +51,14 @@ builder.Services.AddScoped<JwtService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    options.UseSqlServer(connectionString);
+    options.UseSqlServer(connectionString, sqlServerOptions =>
+    {
+        sqlServerOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null);
+        sqlServerOptions.CommandTimeout(120);
+    });
 });
 
 builder.Services.AddControllers()
@@ -118,24 +125,54 @@ builder.Services.AddScoped<IExcelReportGenerator, ExcelReportGenerator>();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+// Retry logic for database initialization
+var maxRetries = 5;
+var delay = TimeSpan.FromSeconds(5);
+
+for (int i = 0; i < maxRetries; i++)
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    if (!dbContext.Users.Any())
+    try
     {
-        var adminUser = new User
+        using (var scope = app.Services.CreateScope())
         {
-            Username = "admin",
-            Email = "admin@example.com",
-            Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
-            Role = "Admin"
-        };
-        dbContext.Users.Add(adminUser);
-        dbContext.SaveChanges();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            
+            // Test connection
+            await dbContext.Database.CanConnectAsync();
+            
+            if (!dbContext.Users.Any())
+            {
+                var adminUser = new User
+                {
+                    Username = "admin",
+                    Email = "admin@example.com",
+                    Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
+                    Role = "Admin"
+                };
+                dbContext.Users.Add(adminUser);
+                await dbContext.SaveChangesAsync();
+            }
+
+            await GradeSeeder.UpdateGradeLevels(dbContext);
+        }
+        
+        // Success - break the retry loop
+        break;
     }
-
-    await GradeSeeder.UpdateGradeLevels(dbContext);
-
+    catch (Exception ex)
+    {
+        if (i == maxRetries - 1)
+        {
+            // Last retry failed - log and continue (don't crash the app)
+            Console.WriteLine($"Failed to initialize database after {maxRetries} attempts: {ex.Message}");
+            Console.WriteLine("Application will continue but database may not be initialized.");
+        }
+        else
+        {
+            Console.WriteLine($"Database connection attempt {i + 1} failed. Retrying in {delay.TotalSeconds} seconds...");
+            await Task.Delay(delay);
+        }
+    }
 }
 
 // Configure the HTTP request pipeline.
