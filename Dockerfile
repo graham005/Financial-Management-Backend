@@ -8,16 +8,16 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy csproj and restore dependencies
-COPY ["*.csproj", "./"]
-RUN dotnet restore
+COPY ["Financial-Management-Backend.csproj", "./"]
+RUN dotnet restore "Financial-Management-Backend.csproj"
 
 # Copy everything else and build
 COPY . .
-RUN dotnet build -c Release -o /app/build
+RUN dotnet build "Financial-Management-Backend.csproj" -c Release -o /app/build
 
 # Stage 2: Publish
 FROM build AS publish
-RUN dotnet publish \
+RUN dotnet publish "Financial-Management-Backend.csproj" \
     -c Release \
     -o /app/publish \
     /p:UseAppHost=false \
