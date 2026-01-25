@@ -8,3 +8,6 @@ dotnet_diagnostic.IDE0320.severity = silent
 
 # CS8603: Possible null reference return.
 dotnet_diagnostic.CS8603.severity = silent
+
+# CS8601: Possible null reference assignment.
+dotnet_diagnostic.CS8601.severity = silent

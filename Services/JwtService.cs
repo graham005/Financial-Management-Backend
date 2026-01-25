@@ -11,12 +11,41 @@ namespace Financial_management_backend.Services
     public class JwtService
     {
         private readonly ApplicationDbContext _dbContext;
-        private readonly IConfiguration _configuration; 
+        private readonly IConfiguration _configuration;
+        private readonly string _jwtKey;
+        private readonly string _jwtIssuer;
+        private readonly string _jwtAudience;
+        private readonly int _tokenValidityMins;
+        private readonly int _refreshTokenValidityMins;
 
-        public JwtService(ApplicationDbContext dbContext, IConfiguration configuration) 
+        public JwtService(ApplicationDbContext dbContext, IConfiguration configuration)
         {
             _dbContext = dbContext;
             _configuration = configuration;
+
+            // Read from environment variables first, fall back to configuration
+            _jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? _configuration["JwtConfig:Key"];
+            _jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? _configuration["JwtConfig:Issuer"];
+            _jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? _configuration["JwtConfig:Audience"];
+
+            // Parse numeric values with fallback
+            if (!int.TryParse(Environment.GetEnvironmentVariable("JWT_EXPIRE_MINUTES"), out _tokenValidityMins))
+            {
+                _tokenValidityMins = _configuration.GetValue<int>("JwtConfig:ExpireTime", 60);
+            }
+
+            if (!int.TryParse(Environment.GetEnvironmentVariable("JWT_REFRESH_EXPIRE_MINUTES"), out _refreshTokenValidityMins))
+            {
+                _refreshTokenValidityMins = _configuration.GetValue<int>("JwtConfig:RefreshTokenValidityMins", 10080);
+            }
+
+            // Validate that we have the required configuration
+            if (string.IsNullOrEmpty(_jwtKey))
+                throw new InvalidOperationException("JWT Key is not configured");
+            if (string.IsNullOrEmpty(_jwtIssuer))
+                throw new InvalidOperationException("JWT Issuer is not configured");
+            if (string.IsNullOrEmpty(_jwtAudience))
+                throw new InvalidOperationException("JWT Audience is not configured");
         }
 
         public async Task<LoginReponse?> Authenticate(LoginRequest request)
@@ -25,19 +54,17 @@ namespace Financial_management_backend.Services
                 return null;
 
             var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-            if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password)) { return null; }
+            if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
+            {
+                return null;
+            }
 
             return await GenerateJwtToken(user);
-
         }
 
         private async Task<LoginReponse> GenerateJwtToken(User user)
         {
-            var issuer = _configuration["JwtConfig:Issuer"];
-            var audience = _configuration["JwtConfig:Audience"];
-            var key = _configuration["JwtConfig:Key"];
-            var tokenValidityMins = _configuration.GetValue<int>("JwtConfig:ExpireTime");
-            var tokenExpiryTimeStamp = DateTime.UtcNow.AddMinutes(tokenValidityMins);
+            var tokenExpiryTimeStamp = DateTime.UtcNow.AddMinutes(_tokenValidityMins);
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
@@ -46,13 +73,12 @@ namespace Financial_management_backend.Services
                     new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                     new Claim(JwtRegisteredClaimNames.Email, user.Email),
                     new Claim(ClaimTypes.Role, user.Role),
-                    
-
                 }),
                 Expires = tokenExpiryTimeStamp,
-                Issuer = issuer,
-                Audience = audience,
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.ASCII.GetBytes(key!)),
+                Issuer = _jwtIssuer,
+                Audience = _jwtAudience,
+                SigningCredentials = new SigningCredentials(
+                    new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_jwtKey)),
                     SecurityAlgorithms.HmacSha512Signature),
             };
 
@@ -68,16 +94,14 @@ namespace Financial_management_backend.Services
                 RefreshToken = await GenerateRefreshToken(user.Id),
                 Role = user.Role
             };
-
         }
 
         private async Task<string> GenerateRefreshToken(Guid userId)
         {
-            var refreshTokenValidityMins = _configuration.GetValue<int>("JwtConfig:RefreshTokenValidityMins");
             var refreshToken = new RefreshToken
             {
                 Token = Guid.NewGuid().ToString(),
-                Expiry = DateTime.UtcNow.AddMinutes(refreshTokenValidityMins),
+                Expiry = DateTime.UtcNow.AddMinutes(_refreshTokenValidityMins),
                 UserId = userId
             };
 
@@ -103,6 +127,5 @@ namespace Financial_management_backend.Services
 
             return await GenerateJwtToken(user);
         }
-
     }
 }
