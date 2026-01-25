@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy csproj and restore
-COPY ["Financial-Management-Backend.csproj", "./"]
-RUN dotnet restore "Financial-Management-Backend.csproj"
+COPY ["*.csproj", "./"]
+RUN dotnet restore
 
 # Copy everything else
 COPY . .
@@ -32,4 +32,4 @@ ENV ASPNETCORE_URLS=http://+:8080;https://+:8081 \
     ASPNETCORE_Kestrel__Certificates__Default__Password=YourDevPassword
 
 # Run with hot reload enabled
-ENTRYPOINT ["dotnet", "watch", "run", "--project", "Financial-Management-Backend.csproj"]
+ENTRYPOINT ["dotnet", "watch", "run"]

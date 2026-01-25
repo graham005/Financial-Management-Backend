@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   # .NET Backend API (Production) - Using Azure SQL Database
