@@ -14,6 +14,16 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Build connection string from environment variables
+var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_NAME")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};Encrypt={Environment.GetEnvironmentVariable("DB_ENCRYPT") ?? "True"};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_SERVER_CERTIFICATE") ?? "False"};Connection Timeout={Environment.GetEnvironmentVariable("DB_CONNECTION_TIMEOUT") ?? "30"};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULT_SETS") ?? "False"}";
+
+// Get JWT configuration from environment variables
+var jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? builder.Configuration["JwtConfig:Key"];
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? builder.Configuration["JwtConfig:Issuer"];
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? builder.Configuration["JwtConfig:Audience"];
+
+if (string.IsNullOrEmpty(jwtKey))
+    throw new InvalidOperationException("JWT_SECRET_KEY environment variable is not set.");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -26,9 +36,9 @@ builder.Services.AddAuthentication(options =>
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidIssuer = builder.Configuration["JwtConfig:Issuer"],
-        ValidAudience = builder.Configuration["JwtConfig:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtConfig:Key"]!)),
+        ValidIssuer = jwtIssuer,
+        ValidAudience = jwtAudience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
@@ -41,7 +51,7 @@ builder.Services.AddScoped<JwtService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.UseSqlServer(connectionString);
 });
 
 builder.Services.AddControllers()
