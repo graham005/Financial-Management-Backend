@@ -44,7 +44,7 @@ namespace Financial_management_backend.Controllers.Admin
 
             // Check if Admission Number already exists 
             var existingStudent = await _context.Students
-    .FirstOrDefaultAsync(s => s.AdmissionNumber.ToLower() == createStudentDto.AdmissionNumber.ToLower());
+                .FirstOrDefaultAsync(s => s.AdmissionNumber.ToLower() == createStudentDto.AdmissionNumber.ToLower());
             if (existingStudent != null)
                 return Conflict("A Student with this addmission number already exists.");
 
@@ -72,7 +72,6 @@ namespace Financial_management_backend.Controllers.Admin
                 ParentId = parent.Id,
                 EnrollmentTerm = enrollmentTerm,
                 EnrollmentYear = enrollmentYear
-
             };
 
             await _context.Students.AddAsync(student);
@@ -84,119 +83,152 @@ namespace Financial_management_backend.Controllers.Admin
         [HttpGet]
         public async Task<IActionResult> GetAllStudents([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
-            var students = await _context.Students
-               .Include(s => s.Grade)
-               .Include(s => s.Parent)
-               .Skip((page - 1) * pageSize)
-               .Take(pageSize)
-               .ToListAsync();
-
-            if(students == null || students.Count == 0)
+            try
             {
-                return NotFound("Students not found.");
+                var totalStudents = await _context.Students.CountAsync();
+                
+                var students = await _context.Students
+                   .Include(s => s.Grade)
+                   .Include(s => s.Parent)
+                   .Skip((page - 1) * pageSize)
+                   .Take(pageSize)
+                   .ToListAsync();
+
+                var studentDtos = students.Select(student => new StudentDto
+                {
+                    Id = student.Id,
+                    AdmissionNumber = student.AdmissionNumber ?? string.Empty,
+                    Name = student.Name ?? string.Empty,
+                    FirstName = student.FirstName ?? string.Empty,
+                    MiddleName = student.MiddleName,
+                    LastName = student.LastName ?? string.Empty,
+                    Birthdate = student.Birthdate,
+                    GradeName = student.Grade?.Name,
+                    ParentName = student.Parent?.Name,
+                    ParentFirstName = student.Parent?.FirstName,
+                    ParentLastName = student.Parent?.LastName,
+                    ParentPhoneNumber = student.Parent?.PhoneNumber,
+                    Status = student.Status
+                }).ToList();
+
+                return Ok(new
+                {
+                    TotalCount = totalStudents,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalPages = (int)Math.Ceiling(totalStudents / (double)pageSize),
+                    Students = studentDtos
+                });
             }
-
-            var studentDtos = students.Select(student => new StudentDto
+            catch (Exception ex)
             {
-                Id = student.Id,
-                AdmissionNumber = student.AdmissionNumber,
-                Name = student.Name,
-                FirstName = student.FirstName,
-                MiddleName = student.MiddleName,
-                LastName = student.LastName,
-                Birthdate = student.Birthdate,
-                GradeName = student.Grade?.Name,
-                ParentName = student.Parent.Name,
-                ParentFirstName = student.Parent.FirstName,
-                ParentLastName = student.Parent.LastName,
-                ParentPhoneNumber = student.Parent?.PhoneNumber,
-                Status = student.Status
-
-            }).ToList();
-
-            return Ok(studentDtos);
+                return StatusCode(500, new { Message = $"Error retrieving students: {ex.Message}", Details = ex.InnerException?.Message });
+            }
         }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetStudentById(Guid id)
         {
-            var student = await _context.Students
-                .Include(s => s.Grade)
-                .Include(s => s.Parent)
-                .FirstOrDefaultAsync(s => s.Id == id);
-
-            if (student == null)
-                return NotFound("Student with that ID not found");
-
-            var studentDto = new StudentDto
+            try
             {
-                Id = student.Id,
-                AdmissionNumber = student.AdmissionNumber,
-                Name = student.Name,
-                FirstName = student.FirstName,
-                MiddleName = student.MiddleName,
-                LastName = student.LastName,
-                Birthdate = student.Birthdate,
-                GradeName = student.Grade.Name,
-                ParentName = student.Parent.Name,
-                ParentFirstName = student.Parent.FirstName,
-                ParentLastName = student.Parent.LastName,
-                ParentPhoneNumber = student.Parent.PhoneNumber
-            };
+                var student = await _context.Students
+                    .Include(s => s.Grade)
+                    .Include(s => s.Parent)
+                    .FirstOrDefaultAsync(s => s.Id == id);
 
-            return Ok(studentDto);
+                if (student == null)
+                    return NotFound("Student with that ID not found");
+
+                var studentDto = new StudentDto
+                {
+                    Id = student.Id,
+                    AdmissionNumber = student.AdmissionNumber ?? string.Empty,
+                    Name = student.Name ?? string.Empty,
+                    FirstName = student.FirstName ?? string.Empty,
+                    MiddleName = student.MiddleName,
+                    LastName = student.LastName ?? string.Empty,
+                    Birthdate = student.Birthdate,
+                    GradeName = student.Grade?.Name,
+                    ParentName = student.Parent?.Name,
+                    ParentFirstName = student.Parent?.FirstName,
+                    ParentLastName = student.Parent?.LastName,
+                    ParentPhoneNumber = student.Parent?.PhoneNumber,
+                    Status = student.Status
+                };
+
+                return Ok(studentDto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Message = $"Error retrieving student: {ex.Message}", Details = ex.InnerException?.Message });
+            }
         }
 
         [HttpPatch("{id}")]
         public async Task<IActionResult> UpdateStudent(Guid id, [FromBody] CreateStudentDto updateStudentDto)
         {
-            var student = await _context.Students.FindAsync(id);
-            if (student == null)
-                return NotFound("Student with that ID not found");
-
-            // Check if Grade exists
-            var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateStudentDto.GradeName);
-            if (grade == null)
-                return NotFound("Grade not found.");
-
-            // Check if parent exists, and adds a new one if none exist
-            var parent = await _context.Parents.FirstOrDefaultAsync(p => p.Name == updateStudentDto.ParentName);
-            if (parent == null)
+            try
             {
-                parent = new Parent
+                var student = await _context.Students.FindAsync(id);
+                if (student == null)
+                    return NotFound("Student with that ID not found");
+
+                // Check if Grade exists
+                var grade = await _context.Grades.FirstOrDefaultAsync(g => g.Name == updateStudentDto.GradeName);
+                if (grade == null)
+                    return NotFound("Grade not found.");
+
+                // Check if parent exists, and adds a new one if none exist
+                var parent = await _context.Parents.FirstOrDefaultAsync(p => p.Name == updateStudentDto.ParentName);
+                if (parent == null)
                 {
-                    Name = updateStudentDto.ParentName,
-                    FirstName = updateStudentDto.ParentFirstName,
-                    LastName = updateStudentDto.ParentLastName,
-                    PhoneNumber = updateStudentDto.ParentPhoneNumber
-                };
-                await _context.Parents.AddAsync(parent);
+                    parent = new Parent
+                    {
+                        Name = updateStudentDto.ParentName,
+                        FirstName = updateStudentDto.ParentFirstName,
+                        LastName = updateStudentDto.ParentLastName,
+                        PhoneNumber = updateStudentDto.ParentPhoneNumber
+                    };
+                    await _context.Parents.AddAsync(parent);
+                    await _context.SaveChangesAsync();
+                }
+
+                student.AdmissionNumber = updateStudentDto.AdmissionNumber;
+                student.Name = updateStudentDto.Name;
+                student.FirstName = updateStudentDto.FirstName;
+                student.MiddleName = updateStudentDto.MiddleName;
+                student.LastName = updateStudentDto.LastName;
+                student.Birthdate = updateStudentDto.Birthdate;
+                student.GradeId = grade.Id;
+                student.ParentId = parent.Id;
+
                 await _context.SaveChangesAsync();
+                return Ok(new { Message = "Student updated successfully" });
             }
-
-            student.AdmissionNumber = updateStudentDto.AdmissionNumber;
-            student.Name = updateStudentDto.Name;
-            student.FirstName = updateStudentDto.FirstName;
-            student.MiddleName = updateStudentDto.MiddleName;
-            student.LastName = updateStudentDto.LastName;
-            student.Birthdate = updateStudentDto.Birthdate;
-            student.GradeId = grade.Id;
-            student.ParentId = parent.Id;
-
-            await _context.SaveChangesAsync();
-            return Ok("Student updated successfully");
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Message = $"Error updating student: {ex.Message}", Details = ex.InnerException?.Message });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteStudent(Guid id)
         {
-            var student = await _context.Students.FindAsync(id);
-            if (student == null) return NotFound("Student with that ID not found");
+            try
+            {
+                var student = await _context.Students.FindAsync(id);
+                if (student == null) 
+                    return NotFound("Student with that ID not found");
 
-            _context.Students.Remove(student);
-            await _context.SaveChangesAsync();
+                _context.Students.Remove(student);
+                await _context.SaveChangesAsync();
 
-            return Ok("Student deleted successfully");
+                return Ok(new { Message = "Student deleted successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Message = $"Error deleting student: {ex.Message}", Details = ex.InnerException?.Message });
+            }
         }
     }
 }
