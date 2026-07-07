@@ -22,11 +22,9 @@ namespace Financial_management_backend.Controllers.Admin
         [HttpGet]
         public async Task<IActionResult> GetAllGrades()
         {
-            var grades = await _context.Grades.ToListAsync();
+            var grades = await _context.Grades.ToListAsync() ?? new List<Grade>();
 
-            if(grades.Count == 0 || grades == null) 
-                return NotFound("No Grades Found");
-
+            
             var gradeDtos = grades.Select(grade => new GradeDto
             {
                 Id = grade.Id,

@@ -20,5 +20,8 @@ namespace Financial_management_backend.Services.Dtos
         public string ParentFirstName { get; set; }
         public string ParentLastName { get; set; }
         public string ParentPhoneNumber { get; set; }
+
+        public string? EnrollmentTerm { get; set; }
+        public int? EnrollmentYear { get; set; }
     }
 }

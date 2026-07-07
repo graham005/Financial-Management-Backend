@@ -49,15 +49,28 @@ namespace Financial_management_backend.Controllers.Admin
                 return Conflict("A Student with this addmission number already exists.");
 
             // Determine enrollment term and year
-            var today = DateTime.Today;
-            string enrollmentTerm = "Unknown";
-            if (today >= new DateTime(today.Year, 1, 1) && today < new DateTime(today.Year, 4, 1))
-                enrollmentTerm = "Term 1";
-            else if (today >= new DateTime(today.Year, 5, 1) && today < new DateTime(today.Year, 8, 1))
-                enrollmentTerm = "Term 2";
-            else if (today >= new DateTime(today.Year, 9, 1) && today < new DateTime(today.Year, 12, 1))
-                enrollmentTerm = "Term 3";
-            int enrollmentYear = today.Year;
+            string enrollmentTerm;
+            int enrollmentYear;
+
+            if (!string.IsNullOrWhiteSpace(createStudentDto.EnrollmentTerm) && createStudentDto.EnrollmentYear.HasValue && createStudentDto.EnrollmentYear.Value > 0)
+            {
+                enrollmentTerm = createStudentDto.EnrollmentTerm!;
+                enrollmentYear = createStudentDto.EnrollmentYear.Value;
+            }
+            else
+            {
+                var today = DateTime.Today;
+                if (today >= new DateTime(today.Year, 1, 1) && today < new DateTime(today.Year, 4, 1))
+                    enrollmentTerm = "Term 1";
+                else if (today >= new DateTime(today.Year, 5, 1) && today < new DateTime(today.Year, 8, 1))
+                    enrollmentTerm = "Term 2";
+                else if (today >= new DateTime(today.Year, 9, 1) && today < new DateTime(today.Year, 12, 1))
+                    enrollmentTerm = "Term 3";
+                else
+                    enrollmentTerm = "Unknown";
+
+                enrollmentYear = today.Year;
+            }
 
             // Create the student
             var student = new Student
@@ -108,7 +121,9 @@ namespace Financial_management_backend.Controllers.Admin
                     ParentFirstName = student.Parent?.FirstName,
                     ParentLastName = student.Parent?.LastName,
                     ParentPhoneNumber = student.Parent?.PhoneNumber,
-                    Status = student.Status
+                    Status = student.Status,
+                    EnrollmentTerm = student.EnrollmentTerm,
+                    EnrollmentYear = student.EnrollmentYear
                 }).ToList();
 
                 return Ok(new
@@ -153,7 +168,9 @@ namespace Financial_management_backend.Controllers.Admin
                     ParentFirstName = student.Parent?.FirstName,
                     ParentLastName = student.Parent?.LastName,
                     ParentPhoneNumber = student.Parent?.PhoneNumber,
-                    Status = student.Status
+                    Status = student.Status,
+                    EnrollmentTerm = student.EnrollmentTerm,
+                    EnrollmentYear = student.EnrollmentYear
                 };
 
                 return Ok(studentDto);
@@ -201,6 +218,10 @@ namespace Financial_management_backend.Controllers.Admin
                 student.Birthdate = updateStudentDto.Birthdate;
                 student.GradeId = grade.Id;
                 student.ParentId = parent.Id;
+                if (!string.IsNullOrWhiteSpace(updateStudentDto.EnrollmentTerm))
+                    student.EnrollmentTerm = updateStudentDto.EnrollmentTerm;
+                if (updateStudentDto.EnrollmentYear.HasValue && updateStudentDto.EnrollmentYear.Value > 0)
+                    student.EnrollmentYear = updateStudentDto.EnrollmentYear.Value;
 
                 await _context.SaveChangesAsync();
                 return Ok(new { Message = "Student updated successfully" });

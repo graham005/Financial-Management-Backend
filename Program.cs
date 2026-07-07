@@ -14,16 +14,21 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Build connection string from environment variables with increased timeout
-var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_NAME")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};Encrypt={Environment.GetEnvironmentVariable("DB_ENCRYPT") ?? "True"};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_SERVER_CERTIFICATE") ?? "False"};Connection Timeout={Environment.GetEnvironmentVariable("DB_CONNECTION_TIMEOUT") ?? "60"};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULT_SETS") ?? "False"};ConnectRetryCount=3;ConnectRetryInterval=10";
+// Build connection string - prefer environment variables (production), fallback to appsettings (development)
+var dbServer = Environment.GetEnvironmentVariable("DB_SERVER");
+var connectionString = string.IsNullOrEmpty(dbServer)
+    ? builder.Configuration.GetConnectionString("DefaultConnection") // Development: use appsettings.json
+    : $"Server={dbServer};Database={Environment.GetEnvironmentVariable("DB_NAME")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};Encrypt={Environment.GetEnvironmentVariable("DB_ENCRYPT") ?? "True"};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_SERVER_CERTIFICATE") ?? "False"};Connection Timeout={Environment.GetEnvironmentVariable("DB_CONNECTION_TIMEOUT") ?? "60"};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULT_SETS") ?? "False"};ConnectRetryCount=3;ConnectRetryInterval=10"; // Production: use environment variables
 
-// Get JWT configuration from environment variables
+// Get JWT configuration from environment variables with fallback to configuration
 var jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? builder.Configuration["JwtConfig:Key"];
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? builder.Configuration["JwtConfig:Issuer"];
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? builder.Configuration["JwtConfig:Audience"];
 
 if (string.IsNullOrEmpty(jwtKey))
-    throw new InvalidOperationException("JWT_SECRET_KEY environment variable is not set.");
+    throw new InvalidOperationException("JWT_SECRET_KEY is not configured.");
+if (string.IsNullOrEmpty(connectionString))
+    throw new InvalidOperationException("Database connection string is not configured.");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -104,8 +109,7 @@ builder.Services.AddCors(options =>
 });
 
 // Add Health Checks
-builder.Services.AddHealthChecks()
-    .AddDbContextCheck<ApplicationDbContext>();
+builder.Services.AddHealthChecks();
 
 // Registering repository and background services 
 builder.Services.AddHostedService<TokenCleanupService>();
@@ -130,8 +134,8 @@ builder.Services.AddScoped<IExcelReportGenerator, ExcelReportGenerator>();
 
 var app = builder.Build();
 
-// Retry logic for database initialization
-var maxRetries = 5;
+// Retry logic for database initialization (only in development or when DB is available)
+var maxRetries = builder.Environment.IsDevelopment() ? 3 : 5;
 var delay = TimeSpan.FromSeconds(5);
 
 for (int i = 0; i < maxRetries; i++)
@@ -158,7 +162,7 @@ for (int i = 0; i < maxRetries; i++)
                 await dbContext.SaveChangesAsync();
             }
 
-            await GradeSeeder.UpdateGradeLevels(dbContext);
+            GradeSeeder.UpdateGradeLevels(dbContext);
         }
         
         // Success - break the retry loop
@@ -181,18 +185,30 @@ for (int i = 0; i < maxRetries; i++)
 }
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Financial Management API v1");
-        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+        c.RoutePrefix = "swagger"; // Serve Swagger UI at /swagger
+    });
+}
+else if (app.Environment.IsProduction())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Financial Management API v1");
+        c.RoutePrefix = string.Empty; // Serve Swagger UI at root for production
     });
 }
 
-// Add root endpoint
-app.MapGet("/", () => Results.Ok(new
+// Add root endpoint for development
+app.MapGet("/", () => Results.Redirect("/swagger"));
+
+// Add API status endpoint
+app.MapGet("/api/status", () => Results.Ok(new
 {
     Service = "Financial Management API",
     Status = "Running",
