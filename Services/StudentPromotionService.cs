@@ -21,10 +21,10 @@ namespace Financial_management_backend.Services
         {
             var (currentTerm, currentYear) = _academicTermService.GetCurrentAcademicTerm();
 
-            if (currentTerm != "Term 3")
-            {
-                throw new InvalidOperationException("Promotions can only be done at the end of Term 3");
-            }
+            //if (currentTerm != "Term 3")
+            //{
+            //    throw new InvalidOperationException("Promotions can only be done at the end of Term 3");
+            //}
 
             var students = await _context.Students
                 .Include(s => s.Grade)
@@ -71,10 +71,10 @@ namespace Financial_management_backend.Services
         {
             var (currentTerm, currentYear) = _academicTermService.GetCurrentAcademicTerm();
 
-            if (currentTerm != "Term 3")
-            {
-                throw new InvalidOperationException("Promotions can only be done at the end of Term 3");
-            }
+            //if (currentTerm != "Term 3")
+            //{
+            //    throw new InvalidOperationException("Promotions can only be done at the end of Term 3");
+            //}
 
             var result = new PromotionResultDto
             {
