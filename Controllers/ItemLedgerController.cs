@@ -30,6 +30,7 @@ namespace Financial_management_backend.Controllers
             {
                 var lists = await _context.RequirementLists
                     .Include(rl => rl.Creator)
+                    .Include(rl => rl.Items) 
                     .OrderByDescending(rl => rl.AcademicYear)
                     .ThenBy(rl => rl.Term)
                     .ToListAsync();
@@ -40,7 +41,7 @@ namespace Financial_management_backend.Controllers
                     rl.Term,
                     rl.AcademicYear,
                     rl.CreatedAt,
-                    CreatedBy = rl.Creator.Username,
+                    CreatedBy = rl.Creator?.Username ?? "Unknown",
                     rl.Status,
                     ItemCount = rl.Items.Count
                 });
@@ -49,7 +50,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -65,7 +66,7 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(rl => rl.Id == id);
 
                 if (list == null)
-                    return NotFound("Requirement list not found.");
+                    return NotFound(new { Message = "Requirement list not found." });
 
                 var result = new RequirementListDetailDto
                 {
@@ -73,7 +74,7 @@ namespace Financial_management_backend.Controllers
                     Term = list.Term,
                     AcademicYear = list.AcademicYear,
                     CreatedAt = list.CreatedAt,
-                    CreatedBy = list.Creator.Username,
+                    CreatedBy = list.Creator?.Username ?? "Unknown", 
                     Status = list.Status,
                     Items = [.. list.Items.Select(item => new RequirementItemDto
                     {
@@ -90,7 +91,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -105,14 +106,14 @@ namespace Financial_management_backend.Controllers
 
                 var userId = User.GetUserId();
                 if (userId == null)
-                    return Unauthorized("User ID not found in token.");
+                    return Unauthorized(new { Message = "User ID not found in token." });
 
                 // Check if a requirement list already exists for this term/year
                 var existingList = await _context.RequirementLists
                     .FirstOrDefaultAsync(rl => rl.Term == dto.Term && rl.AcademicYear == dto.AcademicYear);
 
                 if (existingList != null)
-                    return Conflict($"A requirement list already exists for {dto.Term} {dto.AcademicYear}.");
+                    return Conflict(new { Message = $"A requirement list already exists for {dto.Term} {dto.AcademicYear}." });
 
                 var requirementList = new RequirementList
                 {
@@ -132,7 +133,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -144,7 +145,7 @@ namespace Financial_management_backend.Controllers
             {
                 var list = await _context.RequirementLists.FindAsync(id);
                 if (list == null)
-                    return NotFound("Requirement list not found.");
+                    return NotFound(new { Message = "Requirement list not found." });
 
                 list.Status = "Archived";
                 await _context.SaveChangesAsync();
@@ -153,7 +154,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -170,7 +171,7 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(ri => ri.Id == id);
 
                 if (item == null)
-                    return NotFound("Requirement item not found.");
+                    return NotFound(new { Message = "Requirement item not found." });
 
                 var result = new RequirementItemDto
                 {
@@ -186,7 +187,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -205,15 +206,15 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(rl => rl.Id == requirementListId);
 
                 if (requirementList == null)
-                    return NotFound("Requirement list not found.");
+                    return NotFound(new { Message = "Requirement list not found." });
 
                 // Check if list is archived
                 if (requirementList.Status == "Archived")
-                    return BadRequest("Cannot add items to an archived requirement list.");
+                    return BadRequest(new { Message = "Cannot add items to an archived requirement list." });
 
                 // Check for duplicate item names in this list
                 if (requirementList.Items.Any(i => i.ItemName == dto.ItemName))
-                    return Conflict($"An item named '{dto.ItemName}' already exists in this requirement list.");
+                    return Conflict(new { Message = $"An item named '{dto.ItemName}' already exists in this requirement list." });
 
                 // Create and add the new item
                 var newItem = new RequirementItem
@@ -246,7 +247,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -261,11 +262,11 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(ri => ri.Id == id);
 
                 if (item == null)
-                    return NotFound("Requirement item not found.");
+                    return NotFound(new { Message = "Requirement item not found." });
 
                 // Check if list is archived
-                if (item.RequirementList.Status == "Archived")
-                    return BadRequest("Cannot modify items in an archived requirement list.");
+                if (item.RequirementList?.Status == "Archived") 
+                    return BadRequest(new { Message = "Cannot modify items in an archived requirement list." });
 
                 // Update properties if provided
                 if (!string.IsNullOrEmpty(dto.ItemName))
@@ -277,7 +278,7 @@ namespace Financial_management_backend.Controllers
                                        ri.ItemName == dto.ItemName);
 
                     if (duplicateExists)
-                        return Conflict($"An item named '{dto.ItemName}' already exists in this requirement list.");
+                        return Conflict(new { Message = $"An item named '{dto.ItemName}' already exists in this requirement list." });
 
                     item.ItemName = dto.ItemName;
                 }
@@ -314,7 +315,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -329,18 +330,18 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(ri => ri.Id == id);
 
                 if (item == null)
-                    return NotFound("Requirement item not found.");
+                    return NotFound(new { Message = "Requirement item not found." });
 
                 // Check if list is archived
-                if (item.RequirementList.Status == "Archived")
-                    return BadRequest("Cannot delete items from an archived requirement list.");
+                if (item.RequirementList?.Status == "Archived") 
+                    return BadRequest(new { Message = "Cannot delete items from an archived requirement list." });
 
                 // Check if any transactions use this item
                 var hasTransactions = await _context.ItemTransactions
                     .AnyAsync(t => t.RequirementItemId == id);
 
                 if (hasTransactions)
-                    return BadRequest("Cannot delete item as it has associated transactions.");
+                    return BadRequest(new { Message = "Cannot delete item as it has associated transactions." });
 
                 var requirementListId = item.RequirementListId;
                 _context.RequirementItems.Remove(item);
@@ -353,7 +354,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -385,7 +386,7 @@ namespace Financial_management_backend.Controllers
                 {
                     sr.Id,
                     sr.StudentId,
-                    StudentName = sr.Student.Name,
+                    StudentName = sr.Student?.Name ?? "Unknown", 
                     sr.RequirementListId,
                     sr.RequirementList.Term,
                     sr.RequirementList.AcademicYear,
@@ -397,7 +398,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -415,7 +416,7 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(sr => sr.Id == id);
 
                 if (studentRequirement == null)
-                    return NotFound("Student requirement not found.");
+                    return NotFound(new { Message = "Student requirement not found." });
 
                 // Calculate status for each item
                 var itemStatus = new List<RequirementStatusDto>();
@@ -437,7 +438,7 @@ namespace Financial_management_backend.Controllers
                         .Sum(t => t.MoneyAmount ?? 0);
 
                     // Convert money to quantity equivalent
-                    decimal itemSpecificMoneyAllocation = itemSpecificMoney / item.UnitPrice;
+                    decimal itemSpecificMoneyAllocation = item.UnitPrice > 0 ? itemSpecificMoney / item.UnitPrice : 0; // FIX: Prevent division by zero
                     
                     decimal generalMoneyAllocation = 0;
                     if (generalMoney > 0)
@@ -446,8 +447,8 @@ namespace Financial_management_backend.Controllers
                         var totalValue = studentRequirement.RequirementList.Items.Sum(i => i.RequiredQuantity * i.UnitPrice);
 
                         // Calculate proportion of money that should go to this item
-                        var itemProportion = (item.RequiredQuantity * item.UnitPrice) / totalValue;
-                        generalMoneyAllocation = generalMoney * itemProportion / item.UnitPrice;
+                        var itemProportion = totalValue > 0 ? (item.RequiredQuantity * item.UnitPrice) / totalValue : 0; // FIX: Prevent division by zero
+                        generalMoneyAllocation = item.UnitPrice > 0 ? generalMoney * itemProportion / item.UnitPrice : 0; // FIX: Prevent division by zero
                     }
 
                     var totalReceived = itemTransactions + itemSpecificMoneyAllocation + generalMoneyAllocation;
@@ -471,10 +472,10 @@ namespace Financial_management_backend.Controllers
                 {
                     Id = studentRequirement.Id,
                     StudentId = studentRequirement.StudentId,
-                    StudentName = studentRequirement.Student.Name,
+                    StudentName = studentRequirement.Student?.Name ?? "Unknown", 
                     RequirementListId = studentRequirement.RequirementListId,
-                    Term = studentRequirement.RequirementList.Term,
-                    AcademicYear = studentRequirement.RequirementList.AcademicYear,
+                    Term = studentRequirement.RequirementList?.Term, 
+                    AcademicYear = studentRequirement.RequirementList?.AcademicYear ?? 0, 
                     Status = studentRequirement.Status,
                     AssignedAt = studentRequirement.AssignedAt,
                     RequirementItems = itemStatus
@@ -484,7 +485,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -499,23 +500,23 @@ namespace Financial_management_backend.Controllers
 
                 var userId = User.GetUserId();
                 if (userId == null)
-                    return Unauthorized("User ID not found in token.");
+                    return Unauthorized(new { Message = "User ID not found in token." });
 
                 // Validate student and requirement list
                 var student = await _context.Students.FindAsync(dto.StudentId);
                 if (student == null)
-                    return NotFound("Student not found.");
+                    return NotFound(new { Message = "Student not found." });
 
                 var requirementList = await _context.RequirementLists.FindAsync(dto.RequirementListId);
                 if (requirementList == null)
-                    return NotFound("Requirement list not found.");
+                    return NotFound(new { Message = "Requirement list not found." });
 
                 // Check if student already has this requirement
                 var existingRequirement = await _context.StudentRequirements
                     .FirstOrDefaultAsync(sr => sr.StudentId == dto.StudentId && sr.RequirementListId == dto.RequirementListId);
 
                 if (existingRequirement != null)
-                    return Conflict("This requirement has already been assigned to this student.");
+                    return Conflict(new { Message = "This requirement has already been assigned to this student." });
 
                 var studentRequirement = new StudentRequirement
                 {
@@ -533,7 +534,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -548,12 +549,12 @@ namespace Financial_management_backend.Controllers
 
                 var userId = User.GetUserId();
                 if (userId == null)
-                    return Unauthorized("User ID not found in token.");
+                    return Unauthorized(new { Message = "User ID not found in token." });
 
                 // Validate requirement list
                 var requirementList = await _context.RequirementLists.FindAsync(dto.RequirementListId);
                 if (requirementList == null)
-                    return NotFound("Requirement list not found.");
+                    return NotFound(new { Message = "Requirement list not found." });
 
                 // Process each student
                 var assignedCount = 0;
@@ -609,7 +610,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -626,9 +627,8 @@ namespace Financial_management_backend.Controllers
 
                 var userId = User.GetUserId();
                 if (userId == null)
-                    return Unauthorized("User ID not found in token.");
+                    return Unauthorized(new { Message = "User ID not found in token." });
 
-                // Validate student requirement
                 var studentRequirement = await _context.StudentRequirements
                     .Include(sr => sr.Student)
                     .Include(sr => sr.RequirementList)
@@ -636,128 +636,138 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(sr => sr.Id == dto.StudentRequirementId);
 
                 if (studentRequirement == null)
-                    return NotFound("Student requirement not found.");
+                    return NotFound(new { Message = "Student requirement not found." });
 
-                // Use a database transaction to ensure atomicity
-                using var dbTransaction = await _context.Database.BeginTransactionAsync();
+                IActionResult? response = null;
+                var strategy = _context.Database.CreateExecutionStrategy();
 
-                try
+                await strategy.ExecuteAsync(async () =>
                 {
-                    // Process each transaction item
-                    var transactionItems = new List<ItemTransaction>();
-                    foreach (var item in dto.Items)
+                    await using var dbTransaction = await _context.Database.BeginTransactionAsync();
+
+                    try
                     {
-                        if (item.TransactionType == "Item")
+                        var transactionItems = new List<ItemTransaction>();
+
+                        foreach (var item in dto.Items)
                         {
-                            if (!await ValidateItemTransaction(item, studentRequirement))
-                                return BadRequest($"Invalid item transaction for item ID {item.RequirementItemId}");
-
-                            var transaction = new ItemTransaction
+                            if (item.TransactionType == "Item")
                             {
-                                StudentRequirementId = dto.StudentRequirementId,
-                                TransactionDate = dto.TransactionDate,
-                                TransactionType = "Item",
-                                RequirementItemId = item.RequirementItemId,
-                                ItemQuantity = item.ItemQuantity,
-                                Notes = item.Notes,
-                                RecordedBy = (Guid)userId
-                            };
+                                if (!await ValidateItemTransaction(item, studentRequirement))
+                                {
+                                    response = BadRequest(new { Message = $"Invalid item transaction for item ID {item.RequirementItemId}" });
+                                    return;
+                                }
 
-                            transactionItems.Add(transaction);
-                        }
-                        else if (item.TransactionType == "Money")
-                        {
-                            if (!item.MoneyAmount.HasValue || item.MoneyAmount <= 0)
-                                return BadRequest("Money amount must be greater than zero.");
+                                var transaction = new ItemTransaction
+                                {
+                                    StudentRequirementId = dto.StudentRequirementId,
+                                    TransactionDate = dto.TransactionDate,
+                                    TransactionType = "Item",
+                                    RequirementItemId = item.RequirementItemId,
+                                    ItemQuantity = item.ItemQuantity,
+                                    Notes = item.Notes,
+                                    RecordedBy = (Guid)userId
+                                };
 
-                            // Validate RequirementItemId for money transactions if provided
-                            if (item.RequirementItemId.HasValue)
-                            {
-                                var requirementItem = await _context.RequirementItems
-                                    .FirstOrDefaultAsync(ri => ri.Id == item.RequirementItemId &&
-                                                               ri.RequirementListId == studentRequirement.RequirementListId);
-
-                                if (requirementItem == null)
-                                    return BadRequest($"Invalid requirement item ID {item.RequirementItemId} for money transaction.");
+                                transactionItems.Add(transaction);
                             }
-
-                            var transaction = new ItemTransaction
+                            else if (item.TransactionType == "Money")
                             {
-                                StudentRequirementId = dto.StudentRequirementId,
-                                TransactionDate = dto.TransactionDate,
-                                TransactionType = "Money",
-                                RequirementItemId = item.RequirementItemId,
-                                MoneyAmount = item.MoneyAmount,
-                                Notes = item.Notes,
-                                RecordedBy = (Guid)userId
-                            };
+                                if (!item.MoneyAmount.HasValue || item.MoneyAmount <= 0)
+                                {
+                                    response = BadRequest(new { Message = "Money amount must be greater than zero." });
+                                    return;
+                                }
 
-                            transactionItems.Add(transaction);
+                                // Validate RequirementItemId for money transactions if provided
+                                if (item.RequirementItemId.HasValue)
+                                {
+                                    var requirementItem = await _context.RequirementItems
+                                        .FirstOrDefaultAsync(ri => ri.Id == item.RequirementItemId &&
+                                                                ri.RequirementListId == studentRequirement.RequirementListId);
+
+                                    if (requirementItem == null)
+                                    {
+                                        response = BadRequest(new { Message = $"Invalid requirement item ID {item.RequirementItemId} for money transaction." });
+                                        return;
+                                    }
+                                }
+
+                                var transaction = new ItemTransaction
+                                {
+                                    StudentRequirementId = dto.StudentRequirementId,
+                                    TransactionDate = dto.TransactionDate,
+                                    TransactionType = "Money",
+                                    RequirementItemId = item.RequirementItemId,
+                                    MoneyAmount = item.MoneyAmount,
+                                    Notes = item.Notes,
+                                    RecordedBy = (Guid)userId
+                                };
+
+                                transactionItems.Add(transaction);
+                            }
+                            else
+                            {
+                                response = BadRequest(new { Message = $"Invalid transaction type: {item.TransactionType}. Must be 'Item' or 'Money'." });
+                                return;
+                            }
                         }
-                        else
+
+                        await _context.ItemTransactions.AddRangeAsync(transactionItems);
+                        await _context.SaveChangesAsync();
+
+                        foreach (var itemTransaction in transactionItems)
                         {
-                            return BadRequest($"Invalid transaction type: {item.TransactionType}. Must be 'Item' or 'Money'.");
+                            await CreateFinancialTransactionForItemAsync(itemTransaction, (Guid)userId);
                         }
-                    }
 
-                    // Save ItemTransactions first to get their IDs
-                    await _context.ItemTransactions.AddRangeAsync(transactionItems);
-                    await _context.SaveChangesAsync();
+                        await UpdateStudentRequirementStatus(studentRequirement, transactionItems);
 
-                    // Create FinancialTransactions for each ItemTransaction
-                    foreach (var itemTransaction in transactionItems)
-                    {
-                        await CreateFinancialTransactionForItemAsync(itemTransaction, (Guid)userId);
-                    }
+                        await _context.SaveChangesAsync();
+                        await dbTransaction.CommitAsync();
 
-                    // Update student requirement status
-                    await UpdateStudentRequirementStatus(studentRequirement, transactionItems);
+                        var itemTransactionIds = transactionItems.Select(t => t.Id).ToList();
+                        var financialTransactions = await _context.FinancialTransactions
+                            .Where(ft => ft.ItemTransactionId.HasValue && itemTransactionIds.Contains(ft.ItemTransactionId.Value))
+                            .Select(ft => new { ft.ItemTransactionId, ft.Id })
+                            .ToListAsync();
 
-                    await _context.SaveChangesAsync();
-                    await dbTransaction.CommitAsync();
-
-                    // Fetch FinancialTransactionIds for the response
-                    var itemTransactionIds = transactionItems.Select(t => t.Id).ToList();
-                    var financialTransactions = await _context.FinancialTransactions
-                        .Where(ft => ft.ItemTransactionId.HasValue && itemTransactionIds.Contains(ft.ItemTransactionId.Value))
-                        .Select(ft => new { ft.ItemTransactionId, ft.Id })
-                        .ToListAsync();
-
-                    // Prepare response with FinancialTransactionId
-                    var response = new TransactionResponseDto
-                    {
-                        Id = transactionItems.First().Id,
-                        StudentRequirementId = dto.StudentRequirementId,
-                        StudentName = studentRequirement.Student.Name,
-                        Term = studentRequirement.RequirementList.Term,
-                        AcademicYear = studentRequirement.RequirementList.AcademicYear,
-                        TransactionDate = dto.TransactionDate,
-                        Items = [.. transactionItems.Select(t => new TransactionDetailDto
+                        response = Ok(new TransactionResponseDto
                         {
-                            Id = t.Id,
-                            TransactionType = t.TransactionType,
-                            ItemName = t.RequirementItem.ItemName,
-                            Quantity = t.ItemQuantity,
-                            Unit = t.RequirementItem.Unit,
-                            MoneyAmount = t.MoneyAmount,
-                            Notes = t.Notes,
-                            FinancialTransactionId = financialTransactions
-                                .FirstOrDefault(ft => ft.ItemTransactionId == t.Id)?.Id
-                        })],
-                        RequirementFulfilled = studentRequirement.Status == "Complete"
-                    };
+                            Id = transactionItems.First().Id,
+                            StudentRequirementId = dto.StudentRequirementId,
+                            StudentName = studentRequirement.Student?.Name ?? "Unknown", 
+                            Term = studentRequirement.RequirementList?.Term, 
+                            AcademicYear = studentRequirement.RequirementList?.AcademicYear ?? 0, 
+                            TransactionDate = dto.TransactionDate,
+                            Items = [.. transactionItems.Select(t => new TransactionDetailDto
+                            {
+                                Id = t.Id,
+                                TransactionType = t.TransactionType,
+                                ItemName = t.RequirementItem?.ItemName ?? "Unknown", 
+                                Quantity = t.ItemQuantity,
+                                Unit = t.RequirementItem?.Unit ?? "units", 
+                                MoneyAmount = t.MoneyAmount,
+                                Notes = t.Notes,
+                                FinancialTransactionId = financialTransactions
+                                    .FirstOrDefault(ft => ft.ItemTransactionId == t.Id)?.Id
+                            })],
+                            RequirementFulfilled = studentRequirement.Status == "Complete"
+                        });
+                    }
+                    catch
+                    {
+                        await dbTransaction.RollbackAsync();
+                        throw;
+                    }
+                });
 
-                    return Ok(response);
-                }
-                catch
-                {
-                    await dbTransaction.RollbackAsync();
-                    throw;
-                }
+                return response ?? StatusCode(500, new { Message = "Transaction processing failed" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -770,7 +780,7 @@ namespace Financial_management_backend.Controllers
                 var transaction = await _context.ItemTransactions
                     .Include(t => t.StudentRequirement)
                         .ThenInclude(sr => sr.Student)
-                            .ThenInclude(s => s.Grade)  // Add this line
+                            .ThenInclude(s => s.Grade)  
                     .Include(t => t.StudentRequirement)
                         .ThenInclude(sr => sr.RequirementList)
                     .Include(t => t.RequirementItem)
@@ -778,7 +788,7 @@ namespace Financial_management_backend.Controllers
                     .FirstOrDefaultAsync(t => t.Id == id);
 
                 if (transaction == null)
-                    return NotFound("Item transaction not found.");
+                    return NotFound(new { Message = "Item transaction not found." });
 
                 // Fetch the associated FinancialTransaction
                 var financialTransaction = await _context.FinancialTransactions
@@ -788,18 +798,18 @@ namespace Financial_management_backend.Controllers
                 {
                     Id = transaction.Id,
                     StudentRequirementId = transaction.StudentRequirementId,
-                    StudentName = transaction.StudentRequirement.Student.Name,
-                    AdmissionNumber = transaction.StudentRequirement.Student.AdmissionNumber,
-                    Grade = transaction.StudentRequirement.Student.Grade.Name,
+                    StudentName = transaction.StudentRequirement?.Student?.Name ?? "Unknown",
+                    AdmissionNumber = transaction.StudentRequirement?.Student?.AdmissionNumber ?? "N/A",
+                    Grade = transaction.StudentRequirement?.Student?.Grade?.Name ?? "Unknown",
                     TransactionDate = transaction.TransactionDate,
                     TransactionType = transaction.TransactionType,
-                    ItemName = transaction.RequirementItem.ItemName,
+                    ItemName = transaction.RequirementItem?.ItemName ?? "N/A",
                     Quantity = transaction.ItemQuantity,
-                    Unit = transaction.RequirementItem.Unit,
-                    UnitPrice = transaction.RequirementItem.UnitPrice,
+                    Unit = transaction.RequirementItem?.Unit ?? "units",
+                    UnitPrice = transaction.RequirementItem?.UnitPrice ?? 0,
                     MoneyAmount = transaction.MoneyAmount,
                     Notes = transaction.Notes,
-                    RecordedBy = transaction.Recorder.Username,
+                    RecordedBy = transaction.Recorder?.Username ?? "Unknown",
                     FinancialTransactionId = financialTransaction?.Id
                 };
 
@@ -807,7 +817,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -836,12 +846,12 @@ namespace Financial_management_backend.Controllers
                     t.Id,
                     t.TransactionDate,
                     t.TransactionType,
-                    ItemName = t.RequirementItem?.ItemName,
+                    ItemName = t.RequirementItem?.ItemName ?? "N/A",
                     t.ItemQuantity,
-                    Unit = t.RequirementItem?.Unit,
+                    Unit = t.RequirementItem?.Unit ?? "units",
                     t.MoneyAmount,
                     t.Notes,
-                    RecordedBy = t.Recorder?.Username,
+                    RecordedBy = t.Recorder?.Username ?? "Unknown",
                     FinancialTransactionId = financialTransactions
                         .FirstOrDefault(ft => ft.ItemTransactionId == t.Id)?.Id
                 });
@@ -850,7 +860,7 @@ namespace Financial_management_backend.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return StatusCode(500, new { Message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -906,7 +916,7 @@ namespace Financial_management_backend.Controllers
                     .Sum(t => t.MoneyAmount ?? 0);
 
                 // Convert item-specific money to quantity equivalent
-                decimal itemSpecificMoneyAllocation = itemSpecificMoney / item.UnitPrice;
+                decimal itemSpecificMoneyAllocation = item.UnitPrice > 0 ? itemSpecificMoney / item.UnitPrice : 0; // FIX: Prevent division by zero
 
                 // Distribute general money across items
                 decimal generalMoneyAllocation = 0;
@@ -916,8 +926,8 @@ namespace Financial_management_backend.Controllers
                     var totalValue = studentRequirement.RequirementList.Items.Sum(i => i.RequiredQuantity * i.UnitPrice);
 
                     // Calculate proportion of money that should go to this item
-                    var itemProportion = (item.RequiredQuantity * item.UnitPrice) / totalValue;
-                    generalMoneyAllocation = generalMoney * itemProportion / item.UnitPrice;
+                    var itemProportion = totalValue > 0 ? (item.RequiredQuantity * item.UnitPrice) / totalValue : 0; // FIX: Prevent division by zero
+                    generalMoneyAllocation = item.UnitPrice > 0 ? generalMoney * itemProportion / item.UnitPrice : 0; // FIX: Prevent division by zero
                 }
 
                 var totalReceived = itemTransactions + itemSpecificMoneyAllocation + generalMoneyAllocation;
@@ -1013,7 +1023,7 @@ namespace Financial_management_backend.Controllers
 
                 var itemName = itemTransaction.RequirementItem?.ItemName ?? "Item";
                 var unit = itemTransaction.RequirementItem?.Unit ?? "units";
-                description = $"Item received: {itemName} ({quantity} {unit}) - {itemTransaction.StudentRequirement?.Student?.Name}";
+                description = $"Item received: {itemName} ({quantity} {unit}) - {itemTransaction.StudentRequirement?.Student?.Name ?? "Unknown"}";
                 category = "Item Receipt";
             }
             else if (itemTransaction.TransactionType == "Money")
@@ -1023,11 +1033,11 @@ namespace Financial_management_backend.Controllers
                 if (itemTransaction.RequirementItemId.HasValue)
                 {
                     var itemName = itemTransaction.RequirementItem?.ItemName ?? "Item";
-                    description = $"Money contribution for: {itemName} - {itemTransaction.StudentRequirement?.Student?.Name}";
+                    description = $"Money contribution for: {itemName} - {itemTransaction.StudentRequirement?.Student?.Name ?? "Unknown"}";
                 }
                 else
                 {
-                    description = $"Money contribution for requirement items - {itemTransaction.StudentRequirement?.Student?.Name}";
+                    description = $"Money contribution for requirement items - {itemTransaction.StudentRequirement?.Student?.Name ?? "Unknown"}";
                 }
                 category = "Money Contribution";
             }
@@ -1059,16 +1069,16 @@ namespace Financial_management_backend.Controllers
     public class BulkAssignRequirementDto
     {
         public Guid RequirementListId { get; set; }
-        public List<Guid> StudentIds { get; set; }
+        public List<Guid> StudentIds { get; set; } = new(); 
     }
 
     // New DTO for updating requirement items
     public class UpdateRequirementItemDto
     {
-        public string ItemName { get; set; }
+        public string? ItemName { get; set; } 
         public decimal? RequiredQuantity { get; set; }
-        public string Unit { get; set; }
+        public string? Unit { get; set; } 
         public decimal? UnitPrice { get; set; }
-        public string Description { get; set; }
+        public string? Description { get; set; } 
     }
 }
