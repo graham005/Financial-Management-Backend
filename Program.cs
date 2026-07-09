@@ -14,11 +14,26 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Build connection string - prefer environment variables (production), fallback to appsettings (development)
+// =========================================================================
+// 1. CONNECTION STRING CONFIGURATION 
+// =========================================================================
 var dbServer = Environment.GetEnvironmentVariable("DB_SERVER");
-var connectionString = string.IsNullOrEmpty(dbServer)
-    ? builder.Configuration.GetConnectionString("DefaultConnection") // Development: use appsettings.json
-    : $"Server={dbServer};Database={Environment.GetEnvironmentVariable("DB_NAME")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};Encrypt={Environment.GetEnvironmentVariable("DB_ENCRYPT") ?? "True"};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_SERVER_CERTIFICATE") ?? "False"};Connection Timeout={Environment.GetEnvironmentVariable("DB_CONNECTION_TIMEOUT") ?? "60"};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULT_SETS") ?? "False"};ConnectRetryCount=3;ConnectRetryInterval=10"; // Production: use environment variables
+string connectionString;
+
+if (string.IsNullOrEmpty(dbServer))
+{
+    // Development: Fallback to local appsettings.json connection string
+    connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+}
+else
+{
+    // Production: Dynamically build the standard PostgreSQL string using individual Render Env vars
+    var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+    var dbUser = Environment.GetEnvironmentVariable("DB_USER");
+    var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+    connectionString = $"Host={dbServer};Database={dbName};Username={dbUser};Password={dbPassword};Port=5432;SslMode=Require;TrustServerCertificate=True;";
+}
 
 // Get JWT configuration from environment variables with fallback to configuration
 var jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? builder.Configuration["JwtConfig:Key"];
@@ -27,9 +42,13 @@ var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? builder.
 
 if (string.IsNullOrEmpty(jwtKey))
     throw new InvalidOperationException("JWT_SECRET_KEY is not configured.");
+
 if (string.IsNullOrEmpty(connectionString))
     throw new InvalidOperationException("Database connection string is not configured.");
 
+// =========================================================================
+// 2. IDENTITY AND SECURITY SERVICES
+// =========================================================================
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -54,24 +73,31 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<JwtService>();
 
+// =========================================================================
+// 3. DATABASE CONTEXT REGISTRATION 
+// =========================================================================
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    options.UseSqlServer(connectionString, sqlServerOptions =>
+    options.UseNpgsql(connectionString, npgsqlOptions =>
     {
-        sqlServerOptions.EnableRetryOnFailure(
+        npgsqlOptions.EnableRetryOnFailure(
             maxRetryCount: 5,
             maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
-        sqlServerOptions.CommandTimeout(120);
+            errorCodesToAdd: null);
+
+        npgsqlOptions.CommandTimeout(120);
     });
 });
 
+// =========================================================================
+// 4. API CONTROLLERS & DOCUMENTATION
+// =========================================================================
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -108,33 +134,33 @@ builder.Services.AddCors(options =>
         });
 });
 
-// Add Health Checks
 builder.Services.AddHealthChecks();
 
-// Registering repository and background services 
+// =========================================================================
+// 5. APPLICATION SERVICES & APPLICATION REPOSITORIES
+// =========================================================================
 builder.Services.AddHostedService<TokenCleanupService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-
 builder.Services.AddScoped<FeeService>();
-
 builder.Services.AddScoped<IFinancialTransactionService, FinancialTransactionService>();
 builder.Services.AddScoped<IFeeValidationService, FeeValidationService>();
 builder.Services.AddScoped<IAcademicTermService, AcademicTermService>();
-builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();        
-builder.Services.AddScoped<FeeObligationService>();                           
+builder.Services.AddScoped<IEnhancedFeeService, EnhancedFeeService>();
+builder.Services.AddScoped<FeeObligationService>();
 builder.Services.AddScoped<IItemTransactionService, ItemTransactionService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
-
 builder.Services.AddScoped<IStudentGradeHistoryService, StudentGradeHistoryService>();
 builder.Services.AddScoped<IHistoricalFeeStructureService, HistoricalFeeStructureService>();
 builder.Services.AddScoped<IStudentPromotionService, StudentPromotionService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPdfReportGenerator, PdfReportGenerator>();
-builder.Services.AddScoped<IExcelReportGenerator, ExcelReportGenerator>();  
+builder.Services.AddScoped<IExcelReportGenerator, ExcelReportGenerator>();
 
 var app = builder.Build();
 
-// Retry logic for database initialization (only in development or when DB is available)
+// =========================================================================
+// 6. ASYNC DATABASE SEEDER / INITIALIZATION
+// =========================================================================
 var maxRetries = builder.Environment.IsDevelopment() ? 3 : 5;
 var delay = TimeSpan.FromSeconds(5);
 
@@ -142,37 +168,32 @@ for (int i = 0; i < maxRetries; i++)
 {
     try
     {
-        using (var scope = app.Services.CreateScope())
-        {
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            
-            // Test connection
-            await dbContext.Database.CanConnectAsync();
-            
-            if (!dbContext.Users.Any())
-            {
-                var adminUser = new User
-                {
-                    Username = "admin",
-                    Email = "admin@example.com",
-                    Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
-                    Role = "Admin"
-                };
-                dbContext.Users.Add(adminUser);
-                await dbContext.SaveChangesAsync();
-            }
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            GradeSeeder.UpdateGradeLevels(dbContext);
+        // Test Connection to PostgreSQL
+        await dbContext.Database.CanConnectAsync();
+
+        if (!dbContext.Users.Any())
+        {
+            var adminUser = new User
+            {
+                Username = "admin",
+                Email = "admin@example.com",
+                Password = BCrypt.Net.BCrypt.HashPassword("admin123"),
+                Role = "Admin"
+            };
+            dbContext.Users.Add(adminUser);
+            await dbContext.SaveChangesAsync();
         }
-        
-        // Success - break the retry loop
+
+        await GradeSeeder.UpdateGradeLevels(dbContext);
         break;
     }
     catch (Exception ex)
     {
         if (i == maxRetries - 1)
         {
-            // Last retry failed - log and continue (don't crash the app)
             Console.WriteLine($"Failed to initialize database after {maxRetries} attempts: {ex.Message}");
             Console.WriteLine("Application will continue but database may not be initialized.");
         }
@@ -184,14 +205,16 @@ for (int i = 0; i < maxRetries; i++)
     }
 }
 
-// Configure the HTTP request pipeline.
+// =========================================================================
+// 7. REQUEST PIPELINE MIDDLEWARES & ENDPOINTS
+// =========================================================================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Financial Management API v1");
-        c.RoutePrefix = "swagger"; // Serve Swagger UI at /swagger
+        c.RoutePrefix = "swagger";
     });
 }
 else if (app.Environment.IsProduction())
@@ -200,14 +223,12 @@ else if (app.Environment.IsProduction())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Financial Management API v1");
-        c.RoutePrefix = string.Empty; // Serve Swagger UI at root for production
+        c.RoutePrefix = string.Empty;
     });
 }
 
-// Add root endpoint for development
 app.MapGet("/", () => Results.Redirect("/swagger"));
 
-// Add API status endpoint
 app.MapGet("/api/status", () => Results.Ok(new
 {
     Service = "Financial Management API",
@@ -223,17 +244,12 @@ app.MapGet("/api/status", () => Results.Ok(new
     }
 }));
 
-// Map health checks
 app.MapHealthChecks("/health");
 
 app.UseHttpsRedirection();
-
 app.UseAuthentication();
-
 app.UseAuthorization();
-
 app.UseCors("AllowAllOrigins");
-
 app.MapControllers();
 
 app.Run();

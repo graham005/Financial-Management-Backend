@@ -34,7 +34,7 @@ namespace Financial_management_backend.Controllers.Admin
         {
             try
             {
-                if (request.StudentIds == null || !request.StudentIds.Any())
+                if (request.StudentIds == null || request.StudentIds.Count == 0)
                 {
                     return BadRequest(new { Message = "No students selected for promotion" });
                 }

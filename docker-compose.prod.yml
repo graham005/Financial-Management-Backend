@@ -1,6 +1,5 @@
-
-
 services:
+  # .NET Backend API (Production) - Using Postges Neon Database
   backend:
     build:
       context: .
@@ -10,13 +9,14 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
-      # Internal connection string pointing to our mssql container service name
-      - ConnectionStrings__DefaultConnection=Server=mssql-db,1433;Initial Catalog=FinancialManagementDb;User ID=sa;Password=${DB_PASSWORD};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False;
+      - ConnectionStrings__DefaultConnection=Host=${DB_SERVER};Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD};Port=5432;SslMode=Require;TrustServerCertificate=True;
       - JwtConfig__Key=${JWT_SECRET_KEY}
       - JwtConfig__Issuer=${JWT_ISSUER}
       - JwtConfig__Audience=${JWT_AUDIENCE}
       - JwtConfig__ExpireTime=${JWT_EXPIRE_MINUTES}
       - JwtConfig__RefreshTokenValidityMins=${JWT_REFRESH_EXPIRE_MINUTES}
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
     ports:
       - "5000:8080"
     networks:
@@ -25,23 +25,22 @@ services:
     volumes:
       - app-logs:/app/logs
       - app-data:/app/data
-    depends_on:
-      - mssql-db
+    healthcheck:
+      test: curl --fail http://localhost:8080/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
-  mssql-db:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: financial-mssql-prod
-    user: root # Explicit root access ensures the container can write to mounted volumes
-    environment:
-      - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=${DB_PASSWORD}
-      - MSSQL_PID=Express # Free version for production workloads under 10GB
-    volumes:
-      - mssql-data:/var/opt/mssql
-    networks:
-      - financial-network
-    restart: always
-
+  # Nginx Reverse Proxy (Production)
   nginx:
     image: nginx:alpine
     container_name: financial-nginx-prod
@@ -56,6 +55,11 @@ services:
     networks:
       - financial-network
     restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 networks:
   financial-network:
@@ -63,5 +67,6 @@ networks:
 
 volumes:
   app-logs:
+    driver: local
   app-data:
-  mssql-data: # Vital: This saves your actual SQL data on your host/disk
+    driver: local
